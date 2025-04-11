@@ -11,10 +11,6 @@
             </div>
             
             <div class="card-body p-4">
-                <div class="alert alert-info mb-4">
-                    <p class="mb-0">This is a placeholder for the final results page that will integrate findings from all three assessment phases.</p>
-                </div>
-                
                 <h3 class="h4 mb-3 text-center">Assessment Overview</h3>
                 
                 <div class="row mb-4">
@@ -25,8 +21,18 @@
                             </div>
                             <div class="card-body">
                                 <h5 class="card-title">Depression Screening</h5>
-                                <p class="card-text">Score: <span class="badge bg-primary">8</span></p>
-                                <p class="card-text">Severity: <strong>Mild</strong></p>
+                                <p class="card-text">Score: <span class="badge bg-primary">{{ phq8_score }}</span></p>
+                                {% if phq8_score <= 4 %}
+                                    <p class="card-text">Severity: <strong>None/minimal</strong></p>
+                                {% elif phq8_score <= 9 %}
+                                    <p class="card-text">Severity: <strong>Mild</strong></p>
+                                {% elif phq8_score <= 14 %}
+                                    <p class="card-text">Severity: <strong>Moderate</strong></p>
+                                {% elif phq8_score <= 19 %}
+                                    <p class="card-text">Severity: <strong>Moderately severe</strong></p>
+                                {% else %}
+                                    <p class="card-text">Severity: <strong>Severe</strong></p>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -37,8 +43,11 @@
                             </div>
                             <div class="card-body">
                                 <h5 class="card-title">Cognitive Assessment</h5>
-                                <p class="card-text">Reaction: <span class="badge bg-success">Normal</span></p>
-                                <p class="card-text">Attention: <strong>Above Average</strong></p>
+                                <p class="card-text">Score: <span class="badge bg-success">{{ game_data.score }}</span></p>
+                                {% if game_data.features %}
+                                    <p class="card-text">Reaction time: <strong>{{ "%.0f"|format(game_data.features.avg_reaction_time) }}ms</strong></p>
+                                    <p class="card-text">Accuracy: <strong>{{ "%.1f"|format(game_data.features.accuracy) }}%</strong></p>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -49,9 +58,57 @@
                             </div>
                             <div class="card-body">
                                 <h5 class="card-title">Emotional Analysis</h5>
-                                <p class="card-text">Dominant: <span class="badge bg-info">Neutral</span></p>
-                                <p class="card-text">Reactivity: <strong>Moderate</strong></p>
+                                <p class="card-text">Dominant: <span class="badge bg-info">{{ dominant_emotion_label }}</span></p>
+                                
+                                {% if emotion_counts %}
+                                <div class="small mt-2">
+                                    <div>Distribution:</div>
+                                    {% for emotion, count in emotion_counts.items() %}
+                                        {% if count > 0 %}
+                                            <div>{{ emotion }}: {{ count }}</div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                
+                                <div class="mt-3">
+                                    <h6>Blink Analysis</h6>
+                                    <p>Total Blinks: <strong>{{ blink_count }}</strong></p>
+                                    <p>Blink Rate: <strong>{{ "%.1f"|format(blink_rate) }}</strong> blinks/min</p>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <h6>Gaze Analysis</h6>
+                                    <p>Looking Left: <strong>{{ looking_left_count }}</strong> frames</p>
+                                    <p>Looking Right: <strong>{{ looking_right_count }}</strong> frames</p>
+                                    <p>Looking Center: <strong>{{ looking_center_count }}</strong> frames</p>
+                                    <p>Right/Left Ratio: <strong>{{ "%.2f"|format(ratio_gaze_on_roi) }}</strong></p>
+                                </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h4 class="h5 mb-3">Emotional Indicators</h4>
+                    <div class="card">
+                        <div class="card-body">
+                            {% if game_data.emotional_indicators %}
+                                <ul>
+                                {% for indicator in game_data.emotional_indicators %}
+                                    <li>
+                                        <strong>{{ indicator.emotion }}</strong> ({{ "%.0f"|format(indicator.confidence * 100) }}% confidence)
+                                        <ul>
+                                            {% for detail in indicator.indicators %}
+                                                <li>{{ detail }}</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p>No significant emotional indicators detected in gameplay.</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -60,20 +117,42 @@
                     <h4 class="h5 mb-3">Integrated Analysis</h4>
                     <div class="card">
                         <div class="card-body">
-                            <p>Based on the combined analysis of all three assessment phases, your results indicate:</p>
+                            <p>Based on the combined analysis of all three assessment phases:</p>
                             <ul>
-                                <li><strong>Mood:</strong> Mild depressive symptoms detected through self-report and facial expression analysis</li>
-                                <li><strong>Cognition:</strong> Relatively preserved cognitive function with normal reaction times</li>
-                                <li><strong>Emotional Expression:</strong> Moderate emotional reactivity with predominantly neutral expressions</li>
+                                {% if phq8_score > 9 %}
+                                    <li><strong>Mood:</strong> Significant depressive symptoms detected through self-report (PHQ-8)</li>
+                                {% elif phq8_score > 4 %}
+                                    <li><strong>Mood:</strong> Mild depressive symptoms detected</li>
+                                {% else %}
+                                    <li><strong>Mood:</strong> Minimal or no depressive symptoms reported</li>
+                                {% endif %}
+                                
+                                {% if game_data.features and game_data.features.avg_reaction_time %}
+                                    {% if game_data.features.avg_reaction_time < 800 %}
+                                        <li><strong>Cognition:</strong> Quick reaction times ({{ "%.0f"|format(game_data.features.avg_reaction_time) }}ms)</li>
+                                    {% elif game_data.features.avg_reaction_time < 1200 %}
+                                        <li><strong>Cognition:</strong> Normal reaction times ({{ "%.0f"|format(game_data.features.avg_reaction_time) }}ms)</li>
+                                    {% else %}
+                                        <li><strong>Cognition:</strong> Slower reaction times ({{ "%.0f"|format(game_data.features.avg_reaction_time) }}ms)</li>
+                                    {% endif %}
+                                {% endif %}
+                                
+                                <li><strong>Emotional Expression:</strong> Predominantly {{ dominant_emotion_label }} expressions during video analysis</li>
+                                <li><strong>Blink Analysis:</strong> {{ blink_count }} blinks detected ({{ "%.1f"|format(blink_rate) }} blinks/min)</li>
+                                
+                                {% if total_gaze_frames > 0 %}
+                                    {% if looking_left_count > looking_right_count %}
+                                        <li><strong>Gaze Patterns:</strong> Tendency to look left ({{ "%.1f"|format(looking_left_count / total_gaze_frames * 100) }}% of frames)</li>
+                                    {% elif looking_right_count > looking_left_count %}
+                                        <li><strong>Gaze Patterns:</strong> Tendency to look right ({{ "%.1f"|format(looking_right_count / total_gaze_frames * 100) }}% of frames)</li>
+                                    {% else %}
+                                        <li><strong>Gaze Patterns:</strong> Balanced eye movement with no directional bias</li>
+                                    {% endif %}
+                                    
+                                    <li><strong>Gaze Ratio (Right:Left):</strong> {{ "%.2f"|format(ratio_gaze_on_roi) }} (values >1 indicate right preference, <1 left preference)</li>
+                                {% endif %}
                             </ul>
                         </div>
-                    </div>
-                </div>
-                
-                <div class="mb-4">
-                    <h4 class="h5 mb-3">Visual Summary</h4>
-                    <div class="text-center p-4 bg-light rounded">
-                        <p class="text-muted">[Radar chart or other data visualization will appear here]</p>
                     </div>
                 </div>
                 

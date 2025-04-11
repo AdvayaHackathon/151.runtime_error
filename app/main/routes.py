@@ -3,11 +3,23 @@ from app.main import main
 import os
 import json
 from datetime import datetime
+from app.video_processor import EmotionAnalyzer, BlinkDetector, GazeEstimator
+import cv2
 
 # Create game data directory if it doesn't exist
 GAME_DATA_DIR = os.path.join('app', 'game_data')
 if not os.path.exists(GAME_DATA_DIR):
     os.makedirs(GAME_DATA_DIR)
+
+# Create webcam recordings directory if it doesn't exist
+WEBCAM_RECORDINGS_DIR = os.path.join('app', 'webcam_recordings')
+if not os.path.exists(WEBCAM_RECORDINGS_DIR):
+    os.makedirs(WEBCAM_RECORDINGS_DIR)
+
+# Create processed videos directory if it doesn't exist
+PROCESSED_VIDEOS_DIR = os.path.join('app', 'static', 'processed_videos')
+if not os.path.exists(PROCESSED_VIDEOS_DIR):
+    os.makedirs(PROCESSED_VIDEOS_DIR)
 
 # Define PHQ-8 questions and answer choices
 phq8_questions = [
@@ -141,11 +153,6 @@ def video_analysis():
 @main.route('/save_webcam_recording', methods=['POST'])
 def save_webcam_recording():
     try:
-        # Create webcam recordings directory if it doesn't exist
-        WEBCAM_RECORDINGS_DIR = os.path.join('app', 'webcam_recordings')
-        if not os.path.exists(WEBCAM_RECORDINGS_DIR):
-            os.makedirs(WEBCAM_RECORDINGS_DIR)
-        
         # Log request information
         print(f"Received webcam recording request, Content-Length: {request.content_length}")
         
@@ -162,29 +169,206 @@ def save_webcam_recording():
             return jsonify({"status": "error", "message": "No selected file"}), 400
         
         # Create a filename with timestamp
-        filename = f"webcam_recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.webm"
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"webcam_recording_{timestamp}.webm"
         filepath = os.path.join(WEBCAM_RECORDINGS_DIR, filename)
         
         # Save the file with explicit flush to ensure it's written
         print(f"Saving webcam recording to {filepath}")
         webcam_file.save(filepath)
         
+        # Initialize default return values
+        dominant_emotion_code = 0
+        dominant_emotion_label = "neutral"
+        emotion_counts = {emotion: 0 for emotion in ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']}
+        blink_count = 0
+        blink_rate = 0.0
+        looking_left_count = 0
+        looking_right_count = 0
+        looking_center_count = 0
+        ratio_gaze_on_roi = 0.0
+        status = "success"
+        message = "Webcam recording saved and analyzed successfully"
+        
         # Verify the file was saved
         if os.path.exists(filepath):
             file_size = os.path.getsize(filepath)
             print(f"File saved successfully, size: {file_size} bytes")
             
-            # Only store the path if the file exists and has content
+            # Only process if the file exists and has content
             if file_size > 0:
                 # Store the recording path in the session
                 session['webcam_recording'] = filepath
                 
-                return jsonify({
-                    "status": "success",
-                    "message": "Webcam recording saved successfully",
-                    "filename": filename,
-                    "filesize": file_size
-                })
+                # Process the video for emotion analysis
+                try:
+                    # Create an optional output path for debugging
+                    output_path = os.path.join(PROCESSED_VIDEOS_DIR, f"processed_{timestamp}.avi")
+                    
+                    # Initialize emotion analyzer and process the video
+                    print("Starting emotion analysis...")
+                    emotion_analyzer = EmotionAnalyzer()
+                    
+                    try:
+                        dominant_emotion_code = emotion_analyzer.process_video(
+                            video_path=filepath,
+                            output_path=output_path,
+                            fps=10  # Process at 10 FPS for smoother analysis
+                        )
+                        
+                        # Store the dominant emotion in the session
+                        session['dominant_emotion'] = dominant_emotion_code
+                        session['dominant_emotion_label'] = emotion_analyzer.dominant_emotion
+                        session['emotion_counts'] = emotion_analyzer.emotion_counts
+                        
+                        # Update return values
+                        dominant_emotion_label = emotion_analyzer.dominant_emotion
+                        emotion_counts = emotion_analyzer.emotion_counts
+                        
+                        print(f"Dominant emotion stored in session: {dominant_emotion_code} ({dominant_emotion_label})")
+                    except Exception as e:
+                        print(f"Error in emotion analysis: {str(e)}")
+                        status = "partial_success"
+                        message = f"Webcam recording saved but emotion analysis failed: {str(e)}"
+                    
+                    # Process the same video for blink detection
+                    print("Starting blink detection analysis...")
+                    blink_detector = BlinkDetector()
+                    
+                    try:
+                        # Process video for blink detection
+                        # Open the video file
+                        cap = cv2.VideoCapture(filepath)
+                        
+                        if not cap.isOpened():
+                            raise Exception("Failed to open video file for blink detection")
+                        
+                        # Get video properties for processing
+                        fps = cap.get(cv2.CAP_PROP_FPS)
+                        if fps <= 0:
+                            fps = 30  # Default to 30fps if detection fails
+                        
+                        # Update FPS in blink detector
+                        blink_detector.fps = fps
+                        
+                        # For tracking last blink data
+                        last_blink_data = None
+                        
+                        # Process each frame for blink detection
+                        while cap.isOpened():
+                            ret, frame = cap.read()
+                            if not ret:
+                                break
+                                
+                            # Detect blinks in this frame
+                            blink_data = blink_detector.detect_blink(frame)
+                            if blink_data['success']:
+                                last_blink_data = blink_data
+                        
+                        # Release the video capture
+                        cap.release()
+                        
+                        # Store blink data in session
+                        session['blink_count'] = blink_detector.blink_counter
+                        session['blink_rate'] = last_blink_data.get('blink_rate', 0.0) if last_blink_data else 0.0
+                        
+                        # Update return values
+                        blink_count = blink_detector.blink_counter
+                        blink_rate = last_blink_data.get('blink_rate', 0.0) if last_blink_data else 0.0
+                        
+                        print(f"Blink data stored in session: count={blink_count}, rate={blink_rate}")
+                    except Exception as e:
+                        print(f"Error in blink detection: {str(e)}")
+                        if status == "success":
+                            status = "partial_success"
+                            message = f"Webcam recording saved but blink detection failed: {str(e)}"
+                        else:
+                            message += f". Blink detection also failed: {str(e)}"
+                    
+                    # Process the same video for gaze tracking
+                    print("Starting gaze tracking analysis...")
+                    gaze_tracker = GazeEstimator()
+                    
+                    try:
+                        # Process video for gaze tracking
+                        # Open the video file
+                        cap = cv2.VideoCapture(filepath)
+                        
+                        if not cap.isOpened():
+                            raise Exception("Failed to open video file for gaze tracking")
+                        
+                        # Process each frame for gaze tracking
+                        while cap.isOpened():
+                            ret, frame = cap.read()
+                            if not ret:
+                                break
+                                
+                            # Analyze gaze in this frame
+                            _, _ = gaze_tracker.analyze_frame(frame)
+                        
+                        # Release the video capture
+                        cap.release()
+                        
+                        # Get final gaze tracking metrics
+                        gaze_metrics = gaze_tracker.get_last_metrics()
+                        
+                        # Store gaze data in session
+                        session['looking_left_count'] = gaze_metrics['looking_left_count']
+                        session['looking_right_count'] = gaze_metrics['looking_right_count']
+                        session['looking_center_count'] = gaze_metrics['looking_center_count']
+                        session['total_gaze_frames'] = gaze_metrics['total_frames_processed']
+                        session['ratio_gaze_on_roi'] = gaze_metrics['ratio_gaze_on_roi']
+                        
+                        # Update return values
+                        looking_left_count = gaze_metrics['looking_left_count']
+                        looking_right_count = gaze_metrics['looking_right_count']
+                        looking_center_count = gaze_metrics['looking_center_count']
+                        ratio_gaze_on_roi = gaze_metrics['ratio_gaze_on_roi']
+                        
+                        print(f"Gaze data stored in session: left={looking_left_count}, right={looking_right_count}, center={looking_center_count}, ratio={ratio_gaze_on_roi}")
+                    except Exception as e:
+                        print(f"Error in gaze tracking: {str(e)}")
+                        if status == "success":
+                            status = "partial_success"
+                            message = f"Webcam recording saved but gaze tracking failed: {str(e)}"
+                        else:
+                            message += f". Gaze tracking also failed: {str(e)}"
+                    
+                    return jsonify({
+                        "status": status,
+                        "message": message,
+                        "filename": filename,
+                        "filesize": file_size,
+                        "dominant_emotion": dominant_emotion_code,
+                        "emotion_label": dominant_emotion_label,
+                        "emotion_counts": emotion_counts,
+                        "blink_count": blink_count,
+                        "blink_rate": blink_rate,
+                        "looking_left_count": looking_left_count,
+                        "looking_right_count": looking_right_count,
+                        "looking_center_count": looking_center_count,
+                        "ratio_gaze_on_roi": ratio_gaze_on_roi
+                    })
+                    
+                except Exception as e:
+                    print(f"Error analyzing video: {str(e)}")
+                    # Still return success but indicate analysis failed
+                    session['dominant_emotion'] = dominant_emotion_code  # Default to neutral
+                    session['dominant_emotion_label'] = dominant_emotion_label
+                    session['blink_count'] = blink_count
+                    session['blink_rate'] = blink_rate
+                    session['looking_left_count'] = looking_left_count
+                    session['looking_right_count'] = looking_right_count
+                    session['looking_center_count'] = looking_center_count
+                    session['ratio_gaze_on_roi'] = ratio_gaze_on_roi
+                    session['emotion_counts'] = emotion_counts
+                    
+                    return jsonify({
+                        "status": "partial_success",
+                        "message": f"Webcam recording saved but analysis failed: {str(e)}",
+                        "filename": filename,
+                        "filesize": file_size
+                    })
             else:
                 print("File was created but is empty")
                 return jsonify({"status": "error", "message": "File was saved but is empty"}), 500
@@ -198,8 +382,51 @@ def save_webcam_recording():
 
 @main.route('/final_result')
 def final_result():
-    # Placeholder for the final result page
-    return render_template('final_result.html')
+    # Check if we have all necessary data
+    if 'phq8_score' not in session:
+        flash('Please complete the PHQ-8 questionnaire first')
+        return redirect(url_for('main.phq8_questionnaire'))
+        
+    if 'game_data' not in session:
+        flash('Please complete the game phase first')
+        return redirect(url_for('main.game'))
+        
+    if 'dominant_emotion' not in session:
+        flash('Please complete the video analysis phase first')
+        return redirect(url_for('main.video_analysis'))
+    
+    # Get data from session
+    phq8_score = session.get('phq8_score')
+    game_data = session.get('game_data', {})
+    dominant_emotion = session.get('dominant_emotion')
+    dominant_emotion_label = session.get('dominant_emotion_label', 'neutral')
+    emotion_counts = session.get('emotion_counts', {})
+    blink_count = session.get('blink_count', 0)
+    blink_rate = session.get('blink_rate', 0.0)
+    
+    # Get gaze tracking data
+    looking_left_count = session.get('looking_left_count', 0)
+    looking_right_count = session.get('looking_right_count', 0)
+    looking_center_count = session.get('looking_center_count', 0)
+    total_gaze_frames = session.get('total_gaze_frames', 0)
+    ratio_gaze_on_roi = session.get('ratio_gaze_on_roi', 0.0)
+    
+    # For now, just pass these to the template
+    return render_template(
+        'final_result.html',
+        phq8_score=phq8_score,
+        game_data=game_data,
+        dominant_emotion=dominant_emotion,
+        dominant_emotion_label=dominant_emotion_label,
+        emotion_counts=emotion_counts,
+        blink_count=blink_count,
+        blink_rate=blink_rate,
+        looking_left_count=looking_left_count,
+        looking_right_count=looking_right_count,
+        looking_center_count=looking_center_count,
+        total_gaze_frames=total_gaze_frames,
+        ratio_gaze_on_roi=ratio_gaze_on_roi
+    )
 
 @main.route('/save_game_data', methods=['POST'])
 def save_game_data():
