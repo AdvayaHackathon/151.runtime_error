@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Interactive Game{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h2 class="h5 mb-0">Phase 2: Interactive Game</h2>
+            </div>
+            
+            <div class="card-body p-4 text-center">
+                <h3 class="h4 mb-4">Cognitive Assessment Game</h3>
+                
+                <div class="alert alert-info mb-4">
+                    <p class="mb-0">This is a placeholder for the interactive game component. In the final implementation, this will contain a game that measures reaction time, decision-making, and cognitive patterns.</p>
+                </div>
+                
+                <div id="game-placeholder" class="p-5 mb-4 bg-light rounded">
+                    <h4 class="h5 mb-3">Game Interface Will Appear Here</h4>
+                    <p>The game will collect data on:</p>
+                    <ul class="text-start d-inline-block">
+                        <li>Reaction time</li>
+                        <li>Decision-making patterns</li>
+                        <li>Attention span</li>
+                        <li>Cognitive flexibility</li>
+                    </ul>
+                </div>
+                
+                <div class="d-grid gap-2 col-md-6 mx-auto">
+                    <a href="{{ url_for('main.video_analysis') }}" class="btn btn-success btn-lg">Continue to Phase 3: Video Analysis</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

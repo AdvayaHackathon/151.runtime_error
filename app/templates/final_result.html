@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Comprehensive Results{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
+                <h2 class="h5 mb-0">Your Comprehensive Mental Health Assessment</h2>
+            </div>
+            
+            <div class="card-body p-4">
+                <div class="alert alert-info mb-4">
+                    <p class="mb-0">This is a placeholder for the final results page that will integrate findings from all three assessment phases.</p>
+                </div>
+                
+                <h3 class="h4 mb-3 text-center">Assessment Overview</h3>
+                
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-primary text-white">
+                                Phase 1: PHQ-8
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title">Depression Screening</h5>
+                                <p class="card-text">Score: <span class="badge bg-primary">8</span></p>
+                                <p class="card-text">Severity: <strong>Mild</strong></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-success text-white">
+                                Phase 2: Game
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title">Cognitive Assessment</h5>
+                                <p class="card-text">Reaction: <span class="badge bg-success">Normal</span></p>
+                                <p class="card-text">Attention: <strong>Above Average</strong></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-info text-white">
+                                Phase 3: Video
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title">Emotional Analysis</h5>
+                                <p class="card-text">Dominant: <span class="badge bg-info">Neutral</span></p>
+                                <p class="card-text">Reactivity: <strong>Moderate</strong></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h4 class="h5 mb-3">Integrated Analysis</h4>
+                    <div class="card">
+                        <div class="card-body">
+                            <p>Based on the combined analysis of all three assessment phases, your results indicate:</p>
+                            <ul>
+                                <li><strong>Mood:</strong> Mild depressive symptoms detected through self-report and facial expression analysis</li>
+                                <li><strong>Cognition:</strong> Relatively preserved cognitive function with normal reaction times</li>
+                                <li><strong>Emotional Expression:</strong> Moderate emotional reactivity with predominantly neutral expressions</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h4 class="h5 mb-3">Visual Summary</h4>
+                    <div class="text-center p-4 bg-light rounded">
+                        <p class="text-muted">[Radar chart or other data visualization will appear here]</p>
+                    </div>
+                </div>
+                
+                <div class="alert alert-warning mb-4">
+                    <h4 class="h6">Important Disclaimer</h4>
+                    <p class="mb-0">This assessment is not a diagnostic tool and should not replace professional evaluation. The results are intended to provide insights into patterns that may warrant further attention.</p>
+                </div>
+                
+                <div class="d-grid gap-2 col-md-6 mx-auto">
+                    <a href="{{ url_for('main.index') }}" class="btn btn-primary">Start New Assessment</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

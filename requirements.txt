@@ -1,0 +1,17 @@
+# Depression Risk Assessment System - Dependencies
+
+# Core Libraries
+opencv-python>=4.6.0
+mediapipe>=0.9.0
+deepface>=0.0.79
+tensorflow>=2.10.0
+flask>=2.2.0
+
+# Data Processing
+numpy>=1.22.0
+pandas>=1.4.0
+scikit-learn>=1.0.2
+
+# Utilities
+matplotlib>=3.5.2
+pillow>=9.2.0 
