@@ -34,17 +34,6 @@ class IrisTracker:
         
         # Baseline pupil size (will be adjusted during detection)
         self.baseline_pupil_size = None
-        
-        # Store pupil sizes for analysis
-        self.pupil_sizes = []
-        self.avg_pupil_size = 0.0
-        self.max_pupil_size = 0.0
-        self.min_pupil_size = float('inf')
-        self.pupil_dilation_delta = 0.0
-        self.baseline_recorded = False
-        self.baseline_pupil_sizes = []
-        self.event_pupil_sizes = []
-        self.baseline_frames = 30  # Number of frames to use for baseline
     
     def detect_iris(self, frame: np.ndarray) -> Dict:
         """
@@ -76,8 +65,7 @@ class IrisTracker:
             'left_pupil_size': None,
             'right_pupil_size': None,
             'landmarks': None,
-            'success': False,
-            'pupil_dilation_ratio': None
+            'success': False
         }
         
         # Check if landmarks were detected
@@ -110,34 +98,9 @@ class IrisTracker:
             iris_data['left_pupil_size'] = left_pupil_size
             iris_data['right_pupil_size'] = right_pupil_size
             
-            # Calculate average pupil size
-            avg_pupil_size = (left_pupil_size + right_pupil_size) / 2
-            
-            # Update min and max pupil sizes
-            if avg_pupil_size > 0:
-                self.avg_pupil_size = avg_pupil_size
-                self.max_pupil_size = max(self.max_pupil_size, avg_pupil_size)
-                self.min_pupil_size = min(self.min_pupil_size, avg_pupil_size) if self.min_pupil_size > 0 else avg_pupil_size
-                
-                # Add to pupil sizes list
-                self.pupil_sizes.append(avg_pupil_size)
-                
-                # If baseline not set, collect baseline data
-                if not self.baseline_recorded and len(self.baseline_pupil_sizes) < self.baseline_frames:
-                    self.baseline_pupil_sizes.append(avg_pupil_size)
-                    if len(self.baseline_pupil_sizes) == self.baseline_frames:
-                        self.baseline_recorded = True
-                        self.baseline_pupil_size = np.mean(self.baseline_pupil_sizes)
-                elif self.baseline_recorded:
-                    self.event_pupil_sizes.append(avg_pupil_size)
-                    # Calculate pupil dilation delta once we have enough event data
-                    if len(self.event_pupil_sizes) > 10:  # Wait for at least 10 frames of event data
-                        self.pupil_dilation_delta = self.calculate_pupil_dilation_delta(
-                            self.baseline_pupil_sizes, self.event_pupil_sizes)
-                
-                # Calculate pupil dilation ratio
-                pupil_dilation_ratio = self.calculate_pupil_dilation(avg_pupil_size)
-                iris_data['pupil_dilation_ratio'] = pupil_dilation_ratio
+            # If baseline not set, set it
+            if self.baseline_pupil_size is None and left_pupil_size > 0 and right_pupil_size > 0:
+                self.baseline_pupil_size = (left_pupil_size + right_pupil_size) / 2
             
             iris_data['success'] = True
         
@@ -271,19 +234,6 @@ class IrisTracker:
                     (0, 255, 0),
                     2
                 )
-                
-                # Display pupil dilation delta
-                if self.pupil_dilation_delta != 0:
-                    delta_text = f"Dilation Delta: {self.pupil_dilation_delta:.4f}"
-                    cv2.putText(
-                        output_frame,
-                        delta_text,
-                        (10, 60),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 0),
-                        2
-                    )
             
             # Draw eye regions
             eye_regions = self.get_eye_regions(frame, iris_data)
@@ -318,13 +268,13 @@ class IrisTracker:
             )
         
         return output_frame
-    
-    def analyze_pupil_variability(self, pupil_sizes: List[float] = None) -> Dict:
+        
+    def analyze_pupil_variability(self, pupil_sizes: List[float]) -> Dict:
         """
         Calculate statistical measures for pupil sizes over time.
         
         Args:
-            pupil_sizes: List of pupil size measurements (defaults to stored pupil_sizes if None)
+            pupil_sizes: List of pupil size measurements
             
         Returns:
             Dictionary with pupil variability statistics:
@@ -334,9 +284,6 @@ class IrisTracker:
             - max: Maximum pupil size
             - range: Range of pupil sizes (max - min)
         """
-        if pupil_sizes is None:
-            pupil_sizes = self.pupil_sizes
-            
         if not pupil_sizes or len(pupil_sizes) < 2:
             return {
                 'mean': None,
@@ -372,24 +319,18 @@ class IrisTracker:
             'range': range_val
         }
     
-    def calculate_pupil_dilation_delta(self, baseline_pupil_sizes: List[float] = None, 
-                                       event_pupil_sizes: List[float] = None) -> float:
+    def calculate_pupil_dilation_delta(self, baseline_pupil_sizes: List[float], 
+                                       event_pupil_sizes: List[float]) -> float:
         """
         Calculate pupil size change in response to an event.
         
         Args:
-            baseline_pupil_sizes: List of pupil sizes before event (defaults to stored baseline)
-            event_pupil_sizes: List of pupil sizes after event (defaults to stored event pupil sizes)
+            baseline_pupil_sizes: List of pupil sizes before event
+            event_pupil_sizes: List of pupil sizes after event
             
         Returns:
             Normalized pupil dilation delta (positive = dilation, negative = constriction)
         """
-        if baseline_pupil_sizes is None:
-            baseline_pupil_sizes = self.baseline_pupil_sizes
-            
-        if event_pupil_sizes is None:
-            event_pupil_sizes = self.event_pupil_sizes
-            
         if not baseline_pupil_sizes or not event_pupil_sizes:
             return 0.0
         
@@ -404,39 +345,121 @@ class IrisTracker:
         delta = (event_avg - baseline_avg) / baseline_avg
         
         return delta
-    
-    def get_metrics(self) -> Dict:
-        """
-        Get all iris tracking metrics.
         
-        Returns:
-            Dictionary containing all metrics
+    def calculate_ear(self, landmarks, eye_landmarks_indices) -> float:
         """
-        variability = self.analyze_pupil_variability()
+        Calculate Eye Aspect Ratio (EAR) for blink detection.
+        
+        EAR = (||p2-p6|| + ||p3-p5||) / (2||p1-p4||)
+        
+        Args:
+            landmarks: Face landmarks from MediaPipe
+            eye_landmarks_indices: List of indices for the eye region
+            
+        Returns:
+            Eye Aspect Ratio (EAR)
+        """
+        if not landmarks:
+            return 0.0
+        
+        try:
+            # Get landmark coordinates
+            points = []
+            for idx in eye_landmarks_indices:
+                point = landmarks.landmark[idx]
+                points.append((point.x, point.y))
+            
+            # Compute the euclidean distances
+            # Vertical distances (p2-p6 and p3-p5)
+            vertical_dist1 = np.linalg.norm(np.array(points[1]) - np.array(points[5]))
+            vertical_dist2 = np.linalg.norm(np.array(points[2]) - np.array(points[4]))
+            
+            # Horizontal distance (p1-p4)
+            horizontal_dist = np.linalg.norm(np.array(points[0]) - np.array(points[3]))
+            
+            # Calculate EAR
+            if horizontal_dist == 0:
+                return 0.0
+                
+            ear = (vertical_dist1 + vertical_dist2) / (2.0 * horizontal_dist)
+            return ear
+            
+        except Exception as e:
+            print(f"Error calculating EAR: {e}")
+            return 0.0
+    
+    def detect_blink(self, landmarks) -> Dict:
+        """
+        Detect eye blinks based on Eye Aspect Ratio (EAR).
+        
+        Args:
+            landmarks: Face landmarks from MediaPipe
+            
+        Returns:
+            Dictionary with blink detection results:
+            - left_ear: EAR for left eye
+            - right_ear: EAR for right eye
+            - avg_ear: Average EAR
+            - is_blinking: Boolean indicating blink
+        """
+        if not landmarks:
+            return {
+                'left_ear': 0.0,
+                'right_ear': 0.0,
+                'avg_ear': 0.0,
+                'is_blinking': False
+            }
+        
+        # Define key landmarks for EAR calculation
+        # For left eye (right from viewer perspective)
+        left_eye_indices = [362, 385, 387, 263, 373, 380]
+        # For right eye (left from viewer perspective)
+        right_eye_indices = [33, 160, 158, 133, 153, 144]
+        
+        # Calculate EAR for both eyes
+        left_ear = self.calculate_ear(landmarks, left_eye_indices)
+        right_ear = self.calculate_ear(landmarks, right_eye_indices)
+        
+        # Calculate average EAR
+        avg_ear = (left_ear + right_ear) / 2.0
+        
+        # Determine if blinking (EAR below threshold)
+        # Typical threshold is around 0.2-0.25
+        blink_threshold = 0.2
+        is_blinking = avg_ear < blink_threshold
         
         return {
-            'avg_pupil_size': self.avg_pupil_size,
-            'min_pupil_size': self.min_pupil_size,
-            'max_pupil_size': self.max_pupil_size,
-            'pupil_dilation_delta': self.pupil_dilation_delta,
-            'pupil_variability': variability,
-            'baseline_recorded': self.baseline_recorded,
-            'baseline_pupil_size': self.baseline_pupil_size
+            'left_ear': left_ear,
+            'right_ear': right_ear,
+            'avg_ear': avg_ear,
+            'is_blinking': is_blinking
         }
     
-    def reset(self):
-        """Reset all metrics and data."""
-        self.baseline_pupil_size = None
-        self.pupil_sizes = []
-        self.avg_pupil_size = 0.0
-        self.max_pupil_size = 0.0
-        self.min_pupil_size = float('inf')
-        self.pupil_dilation_delta = 0.0
-        self.baseline_recorded = False
-        self.baseline_pupil_sizes = []
-        self.event_pupil_sizes = []
-    
-    def __del__(self):
-        """Release MediaPipe resources."""
-        if hasattr(self, 'face_mesh'):
-            self.face_mesh.close() 
+    def calculate_blink_rate(self, blink_frames: List[int], total_frames: int, fps: int) -> float:
+        """
+        Calculate blinks per minute.
+        
+        Args:
+            blink_frames: List of frame indices where blinks occurred
+            total_frames: Total number of frames analyzed
+            fps: Frames per second of the video
+            
+        Returns:
+            Blinks per minute rate
+        """
+        if not blink_frames or total_frames == 0 or fps == 0:
+            return 0.0
+        
+        # Calculate video duration in minutes
+        duration_minutes = total_frames / (fps * 60)
+        
+        if duration_minutes == 0:
+            return 0.0
+        
+        # Count blinks (transitions from not blinking to blinking)
+        blink_count = len(blink_frames)
+        
+        # Calculate blinks per minute
+        blinks_per_minute = blink_count / duration_minutes
+        
+        return blinks_per_minute 

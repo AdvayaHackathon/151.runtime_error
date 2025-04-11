@@ -84,6 +84,13 @@
                                     <p>Looking Center: <strong>{{ looking_center_count }}</strong> frames</p>
                                     <p>Right/Left Ratio: <strong>{{ "%.2f"|format(ratio_gaze_on_roi) }}</strong></p>
                                 </div>
+                                
+                                <div class="mt-3">
+                                    <h6>Pupil Analysis</h6>
+                                    <p>Avg Size: <strong>{{ "%.2f"|format(avg_pupil_size) }}</strong> px</p>
+                                    <p>Size Range: <strong>{{ "%.2f"|format(min_pupil_size) }} - {{ "%.2f"|format(max_pupil_size) }}</strong> px</p>
+                                    <p>Dilation Delta: <strong>{{ "%.4f"|format(pupil_dilation_delta) }}</strong></p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -151,7 +158,43 @@
                                     
                                     <li><strong>Gaze Ratio (Right:Left):</strong> {{ "%.2f"|format(ratio_gaze_on_roi) }} (values >1 indicate right preference, <1 left preference)</li>
                                 {% endif %}
+                                
+                                {% if pupil_dilation_delta != 0 %}
+                                    {% if pupil_dilation_delta > 0 %}
+                                        <li><strong>Pupil Response:</strong> Dilation detected ({{ "%.1f"|format(pupil_dilation_delta * 100) }}% increase), potentially indicating interest, cognitive effort, or emotional arousal</li>
+                                    {% else %}
+                                        <li><strong>Pupil Response:</strong> Constriction detected ({{ "%.1f"|format(pupil_dilation_delta * -100) }}% decrease), potentially indicating relaxation or decreased cognitive load</li>
+                                    {% endif %}
+                                {% endif %}
                             </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h4 class="h5 mb-3">AI Model Prediction</h4>
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="me-auto">
+                                    <h5 class="mb-0">Depression Likelihood</h5>
+                                </div>
+                                <div>
+                                    {% if is_depressed %}
+                                        <span class="badge bg-danger">Elevated Risk ({{ "%.1f"|format(depression_confidence * 100) }}%)</span>
+                                    {% else %}
+                                        <span class="badge bg-success">Low Risk ({{ "%.1f"|format(depression_confidence * 100) }}%)</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="p-3 rounded {% if is_depressed %}bg-danger{% else %}bg-success{% endif %} bg-opacity-25">
+                                <p class="text-center fs-5 fw-bold mb-0">
+                                    {{ "%.1f"|format(depression_confidence * 100) }}% {% if is_depressed %}Likelihood of Depression{% else %}Confidence in Low Risk{% endif %}
+                                </p>
+                            </div>
+                            
+                            <p class="mt-3 mb-0"><small>Based on machine learning analysis of combined behavioral, cognitive, and emotional metrics</small></p>
                         </div>
                     </div>
                 </div>
@@ -168,4 +211,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- No JavaScript needed - using simple conditional styling -->
 {% endblock %} 

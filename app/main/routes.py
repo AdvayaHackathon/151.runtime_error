@@ -3,7 +3,8 @@ from app.main import main
 import os
 import json
 from datetime import datetime
-from app.video_processor import EmotionAnalyzer, BlinkDetector, GazeEstimator
+from app.video_processor import EmotionAnalyzer, BlinkDetector, GazeEstimator, IrisTracker
+from app.models import DepressionPredictor
 import cv2
 
 # Create game data directory if it doesn't exist
@@ -187,6 +188,8 @@ def save_webcam_recording():
         looking_right_count = 0
         looking_center_count = 0
         ratio_gaze_on_roi = 0.0
+        pupil_dilation_delta = 0.0
+        avg_pupil_size = 0.0
         status = "success"
         message = "Webcam recording saved and analyzed successfully"
         
@@ -334,6 +337,52 @@ def save_webcam_recording():
                         else:
                             message += f". Gaze tracking also failed: {str(e)}"
                     
+                    # Process the same video for iris tracking and pupil dilation
+                    print("Starting iris tracking and pupil dilation analysis...")
+                    iris_tracker = IrisTracker()
+                    
+                    try:
+                        # Process video for iris tracking
+                        # Open the video file
+                        cap = cv2.VideoCapture(filepath)
+                        
+                        if not cap.isOpened():
+                            raise Exception("Failed to open video file for iris tracking")
+                        
+                        # Process each frame for iris tracking
+                        while cap.isOpened():
+                            ret, frame = cap.read()
+                            if not ret:
+                                break
+                                
+                            # Detect iris in this frame
+                            iris_data = iris_tracker.detect_iris(frame)
+                        
+                        # Release the video capture
+                        cap.release()
+                        
+                        # Get final iris tracking metrics
+                        iris_metrics = iris_tracker.get_metrics()
+                        
+                        # Store iris data in session
+                        session['pupil_dilation_delta'] = iris_metrics['pupil_dilation_delta']
+                        session['avg_pupil_size'] = iris_metrics['avg_pupil_size']
+                        session['min_pupil_size'] = iris_metrics.get('min_pupil_size', 0)
+                        session['max_pupil_size'] = iris_metrics.get('max_pupil_size', 0)
+                        
+                        # Update return values
+                        pupil_dilation_delta = iris_metrics['pupil_dilation_delta']
+                        avg_pupil_size = iris_metrics['avg_pupil_size']
+                        
+                        print(f"Iris data stored in session: pupil_dilation_delta={pupil_dilation_delta}, avg_pupil_size={avg_pupil_size}")
+                    except Exception as e:
+                        print(f"Error in iris tracking: {str(e)}")
+                        if status == "success":
+                            status = "partial_success"
+                            message = f"Webcam recording saved but iris tracking failed: {str(e)}"
+                        else:
+                            message += f". Iris tracking also failed: {str(e)}"
+                    
                     return jsonify({
                         "status": status,
                         "message": message,
@@ -347,7 +396,9 @@ def save_webcam_recording():
                         "looking_left_count": looking_left_count,
                         "looking_right_count": looking_right_count,
                         "looking_center_count": looking_center_count,
-                        "ratio_gaze_on_roi": ratio_gaze_on_roi
+                        "ratio_gaze_on_roi": ratio_gaze_on_roi,
+                        "pupil_dilation_delta": pupil_dilation_delta,
+                        "avg_pupil_size": avg_pupil_size
                     })
                     
                 except Exception as e:
@@ -361,6 +412,8 @@ def save_webcam_recording():
                     session['looking_right_count'] = looking_right_count
                     session['looking_center_count'] = looking_center_count
                     session['ratio_gaze_on_roi'] = ratio_gaze_on_roi
+                    session['pupil_dilation_delta'] = pupil_dilation_delta
+                    session['avg_pupil_size'] = avg_pupil_size
                     session['emotion_counts'] = emotion_counts
                     
                     return jsonify({
@@ -411,6 +464,21 @@ def final_result():
     total_gaze_frames = session.get('total_gaze_frames', 0)
     ratio_gaze_on_roi = session.get('ratio_gaze_on_roi', 0.0)
     
+    # Get pupil dilation data
+    pupil_dilation_delta = session.get('pupil_dilation_delta', 0.0)
+    avg_pupil_size = session.get('avg_pupil_size', 0.0)
+    min_pupil_size = session.get('min_pupil_size', 0.0)
+    max_pupil_size = session.get('max_pupil_size', 0.0)
+    
+    # Load depression prediction model and make prediction
+    predictor = DepressionPredictor()
+    features = predictor.extract_features_from_session(session)
+    is_depressed, depression_confidence = predictor.predict(features)
+    
+    # Store prediction results in session
+    session['is_depressed'] = is_depressed
+    session['depression_confidence'] = depression_confidence
+    
     # For now, just pass these to the template
     return render_template(
         'final_result.html',
@@ -425,7 +493,13 @@ def final_result():
         looking_right_count=looking_right_count,
         looking_center_count=looking_center_count,
         total_gaze_frames=total_gaze_frames,
-        ratio_gaze_on_roi=ratio_gaze_on_roi
+        ratio_gaze_on_roi=ratio_gaze_on_roi,
+        pupil_dilation_delta=pupil_dilation_delta,
+        avg_pupil_size=avg_pupil_size,
+        min_pupil_size=min_pupil_size,
+        max_pupil_size=max_pupil_size,
+        is_depressed=is_depressed,
+        depression_confidence=depression_confidence
     )
 
 @main.route('/save_game_data', methods=['POST'])
