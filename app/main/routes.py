@@ -138,6 +138,64 @@ def video_analysis():
     # Placeholder for the video analysis phase
     return render_template('video_analysis.html')
 
+@main.route('/save_webcam_recording', methods=['POST'])
+def save_webcam_recording():
+    try:
+        # Create webcam recordings directory if it doesn't exist
+        WEBCAM_RECORDINGS_DIR = os.path.join('app', 'webcam_recordings')
+        if not os.path.exists(WEBCAM_RECORDINGS_DIR):
+            os.makedirs(WEBCAM_RECORDINGS_DIR)
+        
+        # Log request information
+        print(f"Received webcam recording request, Content-Length: {request.content_length}")
+        
+        # Check if the post request has the file part
+        if 'webcam_video' not in request.files:
+            print("No webcam_video in request.files")
+            return jsonify({"status": "error", "message": "No file part"}), 400
+        
+        webcam_file = request.files['webcam_video']
+        
+        # If user does not select file, browser also submit an empty part without filename
+        if webcam_file.filename == '':
+            print("Empty filename in webcam_file")
+            return jsonify({"status": "error", "message": "No selected file"}), 400
+        
+        # Create a filename with timestamp
+        filename = f"webcam_recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.webm"
+        filepath = os.path.join(WEBCAM_RECORDINGS_DIR, filename)
+        
+        # Save the file with explicit flush to ensure it's written
+        print(f"Saving webcam recording to {filepath}")
+        webcam_file.save(filepath)
+        
+        # Verify the file was saved
+        if os.path.exists(filepath):
+            file_size = os.path.getsize(filepath)
+            print(f"File saved successfully, size: {file_size} bytes")
+            
+            # Only store the path if the file exists and has content
+            if file_size > 0:
+                # Store the recording path in the session
+                session['webcam_recording'] = filepath
+                
+                return jsonify({
+                    "status": "success",
+                    "message": "Webcam recording saved successfully",
+                    "filename": filename,
+                    "filesize": file_size
+                })
+            else:
+                print("File was created but is empty")
+                return jsonify({"status": "error", "message": "File was saved but is empty"}), 500
+        else:
+            print(f"Failed to save file at {filepath}")
+            return jsonify({"status": "error", "message": "Failed to save file"}), 500
+            
+    except Exception as e:
+        print(f"Error in save_webcam_recording: {str(e)}")
+        return jsonify({"status": "error", "message": f"Server error: {str(e)}"}), 500
+
 @main.route('/final_result')
 def final_result():
     # Placeholder for the final result page

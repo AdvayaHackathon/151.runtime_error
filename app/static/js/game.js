@@ -123,9 +123,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function handleDragging(e) {
-        if (player.dragging && gameRunning) {
-            const pos = getEventPosition(e);
+        e.preventDefault(); // Prevent default behavior to avoid issues
+        
+        if (!gameRunning) return; // Don't process if game not running
+        
+        const pos = getEventPosition(e);
+        if (player.dragging) {
             updatePlayerPosition(pos.x);
+        } else {
+            // Check if touch/click is directly on player to start dragging
+            const dx = pos.x - player.x;
+            const dy = pos.y - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < player.radius * 1.5) {
+                player.dragging = true;
+                lastMousePos.x = pos.x;
+                lastMouseMoveTime = Date.now();
+            }
         }
     }
     
@@ -134,22 +149,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function handleTouchStart(e) {
-        e.preventDefault();
-        startDragging(e.touches[0]);
+        e.preventDefault(); // Prevent scrolling
+        if (e.touches && e.touches.length > 0) {
+            const touch = e.touches[0];
+            const pos = getEventPosition(touch);
+            const dx = pos.x - player.x;
+            const dy = pos.y - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < player.radius * 1.5) {
+                player.dragging = true;
+                lastMousePos.x = pos.x;
+                lastMouseMoveTime = Date.now();
+            }
+        }
     }
     
     function handleTouchMove(e) {
-        e.preventDefault();
-        if (player.dragging && gameRunning) {
-            handleDragging(e.touches[0]);
+        e.preventDefault(); // Prevent scrolling
+        if (!gameRunning) return;
+        
+        if (player.dragging && e.touches && e.touches.length > 0) {
+            const touch = e.touches[0];
+            const pos = getEventPosition(touch);
+            updatePlayerPosition(pos.x);
         }
     }
     
     function getEventPosition(e) {
         const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX !== undefined) ? e.clientX : e.pageX;
+        const y = (e.clientY !== undefined) ? e.clientY : e.pageY;
         return {
-            x: (e.clientX || e.pageX) - rect.left,
-            y: (e.clientY || e.pageY) - rect.top
+            x: x - rect.left,
+            y: y - rect.top
         };
     }
     
@@ -562,10 +595,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function calculateEmotionalResponseRatio() {
-        if (positiveEmojisCollected + negativeEmojisCollected === 0) return 0;
+        // Return 0 if no emojis collected
+        if (positiveEmojisCollected + negativeEmojisCollected === 0) {
+            console.log("No positive or negative emojis collected for response ratio");
+            return 0;
+        }
         
-        return (positiveEmojisCollected - negativeEmojisCollected) / 
-               (positiveEmojisCollected + negativeEmojisCollected);
+        const ratio = (positiveEmojisCollected - negativeEmojisCollected) / 
+                (positiveEmojisCollected + negativeEmojisCollected);
+        console.log(`Calculated emotional response ratio: ${ratio.toFixed(2)} from ${positiveEmojisCollected} positive and ${negativeEmojisCollected} negative emojis`);
+        return ratio;
     }
     
     function calculateAverageReactionTime() {
@@ -716,130 +755,202 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateMetricsDisplay(data) {
-        // Calculate all metrics
-        const avgReactionTime = calculateAverageReactionTime();
-        accuracyMetric = calculateAccuracy();
-        emotionalResponseRatio = calculateEmotionalResponseRatio();
-        const distractionRecovery = postDistractionSpeed > 0 && preDistractionSpeed > 0 ? 
-            (postDistractionSpeed / preDistractionSpeed).toFixed(4) : '0.0000';
-        const hesitationFreq = gameTime > 0 ? (hesitations / 60).toFixed(2) : '0.00';
-        movementVariability = calculateMovementVariability().toFixed(2);
-        const emotionalBias = (positiveEmojisCollected - negativeEmojisCollected) / 
+        console.log("Updating metrics display");
+        try {
+            // Calculate all metrics
+            const avgReactionTime = calculateAverageReactionTime() || 0;
+            accuracyMetric = calculateAccuracy() || 0;
+            emotionalResponseRatio = calculateEmotionalResponseRatio() || 0;
+            const distractionRecovery = postDistractionSpeed > 0 && preDistractionSpeed > 0 ? 
+                (postDistractionSpeed / preDistractionSpeed).toFixed(4) : '0.0000';
+            const hesitationFreq = gameTime > 0 ? (hesitations / 60).toFixed(2) : '0.00';
+            movementVariability = calculateMovementVariability().toFixed(2) || '0.00';
+            
+            // Calculate emotional bias (safely)
+            let emotionalBias = 0;
+            if (positiveEmojisCollected + negativeEmojisCollected > 0) {
+                emotionalBias = (positiveEmojisCollected - negativeEmojisCollected) / 
                               Math.max(1, positiveEmojisCollected + negativeEmojisCollected);
-        const distractionResponseDelta = calculateDistractionResponseDelta().toFixed(0);
-        const distractionAccuracyDelta = calculateDistractionAccuracyDelta().toFixed(1);
-        reactionTimeVariability = calculateReactionTimeVariability().toFixed(2);
-        performanceDegradation = calculatePerformanceDegradation().toFixed(2);
-        positiveEmojiPercentage = calculatePositiveEmojiPercentage().toFixed(1);
-        
-        // Update the display
-        document.getElementById('reactionTime').textContent = `Average reaction time: ${Math.round(avgReactionTime)}ms`;
-        document.getElementById('accuracyMetric').textContent = `Accuracy: ${accuracyMetric.toFixed(1)}%`;
-        document.getElementById('emotionalResponseRatio').textContent = `Emotional response ratio: ${emotionalResponseRatio.toFixed(2)}`;
-        document.getElementById('distractionRecovery').textContent = `Distraction recovery: ${distractionRecovery}`;
-        document.getElementById('hesitationMetric').textContent = `Hesitation frequency: ${hesitationFreq} per second`;
-        document.getElementById('movementVariability').textContent = `Movement variability: ${movementVariability}`;
-        document.getElementById('emotionalBias').textContent = `Emotional bias: ${emotionalBias.toFixed(2)}`;
-        document.getElementById('distractionResponseDelta').textContent = `Distraction response: ${distractionResponseDelta}ms reaction time, ${distractionAccuracyDelta}% accuracy`;
-        document.getElementById('reactionTimeVariability').textContent = `Reaction time variability: ${reactionTimeVariability}`;
-        document.getElementById('performanceDegradation').textContent = `Performance change: ${performanceDegradation}%`;
-        document.getElementById('emojiCollectionPercentage').textContent = `Emoji collection ratio: ${positiveEmojiPercentage}% positive`;
+            }
+            
+            const distractionResponseDelta = calculateDistractionResponseDelta().toFixed(0) || '0';
+            const distractionAccuracyDelta = calculateDistractionAccuracyDelta().toFixed(1) || '0.0';
+            reactionTimeVariability = calculateReactionTimeVariability().toFixed(2) || '0.00';
+            performanceDegradation = calculatePerformanceDegradation().toFixed(2) || '0.00';
+            positiveEmojiPercentage = calculatePositiveEmojiPercentage().toFixed(1) || '0.0';
+            
+            console.log("Calculated metrics:", {
+                avgReactionTime,
+                accuracyMetric,
+                emotionalResponseRatio,
+                distractionRecovery,
+                movementVariability,
+                emotionalBias,
+                reactionTimeVariability,
+                positiveEmojiPercentage
+            });
+            
+            // Safely update element content
+            const updateElement = (id, text) => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.textContent = text;
+                } else {
+                    console.error(`Element with id ${id} not found`);
+                }
+            };
+            
+            // Update the display with safe element updates
+            updateElement('reactionTime', `Average reaction time: ${Math.round(avgReactionTime)}ms`);
+            updateElement('accuracyMetric', `Accuracy: ${accuracyMetric.toFixed(1)}%`);
+            updateElement('emotionalResponseRatio', `Emotional response ratio: ${emotionalResponseRatio.toFixed(2)}`);
+            updateElement('distractionRecovery', `Distraction recovery: ${distractionRecovery}`);
+            updateElement('hesitationMetric', `Hesitation frequency: ${hesitationFreq} per second`);
+            updateElement('movementVariability', `Movement variability: ${movementVariability}`);
+            updateElement('emotionalBias', `Emotional bias: ${emotionalBias.toFixed(2)}`);
+            updateElement('distractionResponseDelta', `Distraction response: ${distractionResponseDelta}ms reaction time, ${distractionAccuracyDelta}% accuracy`);
+            updateElement('reactionTimeVariability', `Reaction time variability: ${reactionTimeVariability}`);
+            updateElement('performanceDegradation', `Performance change: ${performanceDegradation}%`);
+            updateElement('emojiCollectionPercentage', `Emoji collection ratio: ${positiveEmojiPercentage}% positive`);
+            
+            // Log that metrics display was updated successfully
+            console.log("Metrics display updated successfully");
+        } catch (error) {
+            console.error("Error updating metrics display:", error);
+        }
     }
     
     function endGame() {
+        console.log("Game over - calculating final metrics");
         gameRunning = false;
         clearInterval(timer);
         
-        // Calculate final metrics
-        accuracyMetric = calculateAccuracy();
-        reactionTimeVariability = calculateReactionTimeVariability();
-        performanceDegradation = calculatePerformanceDegradation();
-        positiveEmojiPercentage = calculatePositiveEmojiPercentage();
-        
-        // Update metrics display
-        updateMetricsDisplay();
-        
-        // Calculate final metrics
-        const gameData = {
-            score: score,
-            starsCollected: starsCollected,
-            obstacleAvoidances: obstacleAvoidances,
-            missedRewards: missedRewards,
-            totalObjects: totalObjects,
-            successfulActions: successfulActions,
-            blocksHit: blocksHit,
-            blocksDodged: blocksDodged,
-            accuracy: accuracyMetric,
-            positiveEmojiInteractions: positiveEmojisCollected,
-            negativeEmojiInteractions: negativeEmojisCollected,
-            neutralEmojiInteractions: neutralEmojisCollected,
-            movementDirectionChanges: movementDirectionChanges,
-            hesitations: hesitations,
-            distractionResponseDelta: postDistractionSpeed - preDistractionSpeed,
-            distractionAccuracyDelta: calculateDistractionAccuracyDelta(),
-            movementVariability: movementVariability,
-            emotionalResponseRatio: emotionalResponseRatio,
-            reactionTimes: totalReactionTimes,
-            reactionTimeVariability: reactionTimeVariability,
-            performanceDegradation: performanceDegradation,
-            positiveEmojiPercentage: positiveEmojiPercentage,
-            avgResponseToPositive: emotionalStimulusResponses
-                .filter(r => r.type === 'happy')
-                .reduce((sum, r) => sum + r.reactionTime, 0) / 
-                Math.max(1, emotionalStimulusResponses.filter(r => r.type === 'happy').length),
-            avgResponseToNegative: emotionalStimulusResponses
-                .filter(r => ['sad', 'angry'].includes(r.type))
-                .reduce((sum, r) => sum + r.reactionTime, 0) / 
-                Math.max(1, emotionalStimulusResponses.filter(r => ['sad', 'angry'].includes(r.type)).length),
-            preDistractionSpeed: preDistractionSpeed,
-            postDistractionSpeed: postDistractionSpeed,
-            preDistractionAccuracy: preDistractionAccuracy,
-            postDistractionAccuracy: postDistractionAccuracy,
-            emotionalStimulusResponses: emotionalStimulusResponses,
-            playerPositions: playerPositions,
-            idlePeriods: idlePeriods,
-            distractionEvents: distractionTimes
-        };
-        
-        // Send data to server
-        fetch('/save_game_data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(gameData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Update result display
+        try {
+            // Calculate final metrics
+            accuracyMetric = calculateAccuracy();
+            reactionTimeVariability = calculateReactionTimeVariability();
+            performanceDegradation = calculatePerformanceDegradation();
+            positiveEmojiPercentage = calculatePositiveEmojiPercentage();
+            
+            console.log("Final metrics calculated:", {
+                accuracy: accuracyMetric,
+                reactionTimeVar: reactionTimeVariability,
+                performanceDeg: performanceDegradation,
+                emojiPercent: positiveEmojiPercentage
+            });
+            
+            // Update metrics display immediately
+            updateMetricsDisplay();
+            
+            // Update basic result display immediately
             finalScoreDisplay.textContent = `Final Score: ${score}`;
             starsCollectedDisplay.textContent = `Stars Collected: ${starsCollected}`;
             
-            // Display emotional indicators
-            const indicatorsList = document.getElementById('emotionalIndicators');
-            indicatorsList.innerHTML = '';
-            
-            if (data.emotional_indicators && data.emotional_indicators.length > 0) {
-                data.emotional_indicators.forEach(indicator => {
-                    const li = document.createElement('li');
-                    li.textContent = `${indicator.emotion} (${Math.round(indicator.confidence * 100)}% confidence)`;
-                    indicatorsList.appendChild(li);
-                });
-            } else {
-                const li = document.createElement('li');
-                li.textContent = 'No significant emotional indicators detected';
-                indicatorsList.appendChild(li);
-            }
-            
-            // Show game over panel
+            // Show game over panel right away
             gameOverPanel.style.display = 'block';
             startButton.style.display = 'block';
             
-            // We will not auto-redirect to allow user to see their results
-        })
-        .catch(error => {
-            console.error('Error:', error);
-        });
+            // Calculate final metrics for server
+            const gameData = {
+                score: score,
+                starsCollected: starsCollected,
+                obstacleAvoidances: obstacleAvoidances,
+                missedRewards: missedRewards,
+                totalObjects: totalObjects,
+                successfulActions: successfulActions,
+                blocksHit: blocksHit,
+                blocksDodged: blocksDodged,
+                accuracy: accuracyMetric,
+                positiveEmojiInteractions: positiveEmojisCollected,
+                negativeEmojiInteractions: negativeEmojisCollected,
+                neutralEmojiInteractions: neutralEmojisCollected,
+                movementDirectionChanges: movementDirectionChanges,
+                hesitations: hesitations,
+                distractionResponseDelta: postDistractionSpeed - preDistractionSpeed,
+                distractionAccuracyDelta: calculateDistractionAccuracyDelta(),
+                movementVariability: movementVariability,
+                emotionalResponseRatio: emotionalResponseRatio,
+                reactionTimes: totalReactionTimes,
+                reactionTimeVariability: reactionTimeVariability,
+                performanceDegradation: performanceDegradation,
+                positiveEmojiPercentage: positiveEmojiPercentage,
+                avgResponseToPositive: emotionalStimulusResponses
+                    .filter(r => r.type === 'happy')
+                    .reduce((sum, r) => sum + r.reactionTime, 0) / 
+                    Math.max(1, emotionalStimulusResponses.filter(r => r.type === 'happy').length),
+                avgResponseToNegative: emotionalStimulusResponses
+                    .filter(r => ['sad', 'angry'].includes(r.type))
+                    .reduce((sum, r) => sum + r.reactionTime, 0) / 
+                    Math.max(1, emotionalStimulusResponses.filter(r => ['sad', 'angry'].includes(r.type)).length),
+                preDistractionSpeed: preDistractionSpeed,
+                postDistractionSpeed: postDistractionSpeed,
+                preDistractionAccuracy: preDistractionAccuracy,
+                postDistractionAccuracy: postDistractionAccuracy,
+                emotionalStimulusResponses: emotionalStimulusResponses,
+                playerPositions: playerPositions,
+                idlePeriods: idlePeriods,
+                distractionEvents: distractionTimes
+            };
+            
+            // Send data to server
+            fetch('/save_game_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(gameData)
+            })
+            .then(response => {
+                console.log("Server response received");
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Processing server data:", data);
+                
+                // Display emotional indicators
+                const indicatorsList = document.getElementById('emotionalIndicators');
+                if (!indicatorsList) {
+                    console.error("Emotional indicators list element not found");
+                    return;
+                }
+                
+                indicatorsList.innerHTML = '';
+                
+                if (data.emotional_indicators && data.emotional_indicators.length > 0) {
+                    data.emotional_indicators.forEach(indicator => {
+                        const li = document.createElement('li');
+                        li.textContent = `${indicator.emotion} (${Math.round(indicator.confidence * 100)}% confidence)`;
+                        indicatorsList.appendChild(li);
+                    });
+                } else {
+                    const li = document.createElement('li');
+                    li.textContent = 'No significant emotional indicators detected';
+                    indicatorsList.appendChild(li);
+                }
+            })
+            .catch(error => {
+                console.error('Error sending/receiving game data:', error);
+                
+                // Still show something in the emotional indicators section
+                const indicatorsList = document.getElementById('emotionalIndicators');
+                if (indicatorsList) {
+                    indicatorsList.innerHTML = '<li>Unable to analyze emotional indicators - connection issue</li>';
+                }
+            });
+        } catch (error) {
+            console.error("Error in endGame function:", error);
+            
+            // Ensure game over panel is displayed even if there's an error
+            if (gameOverPanel) {
+                gameOverPanel.style.display = 'block';
+            }
+            if (startButton) {
+                startButton.style.display = 'block';
+            }
+        }
     }
     
     // Event listeners for buttons

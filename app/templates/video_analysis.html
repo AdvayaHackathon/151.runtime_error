@@ -2,6 +2,97 @@
 
 {% block title %}Video Analysis{% endblock %}
 
+{% block extra_css %}
+<style>
+    #videoContainer {
+        position: relative;
+        max-width: 100%;
+        margin: 0 auto;
+    }
+    #stimulusVideo {
+        width: 100%;
+        height: auto;
+        max-height: 350px;
+        background-color: #000;
+        object-fit: contain;
+    }
+    #webcamVideo {
+        width: 100%;
+        height: auto;
+        max-height: 350px;
+        background-color: #000;
+        object-fit: cover;
+    }
+    .video-container {
+        position: relative;
+        background-color: #000;
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .video-controls {
+        margin-top: 15px;
+    }
+    #recordingIndicator {
+        display: none;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background-color: rgba(255, 0, 0, 0.7);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 14px;
+        z-index: 10;
+    }
+    #loadingOverlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        color: white;
+    }
+    .spinner {
+        border: 8px solid #f3f3f3;
+        border-top: 8px solid #3498db;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .blink {
+        animation: blink-animation 1s steps(5, start) infinite;
+    }
+    @keyframes blink-animation {
+        to {
+            visibility: hidden;
+        }
+    }
+    #webcamError {
+        display: none;
+        color: #721c24;
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        padding: 10px;
+        margin-top: 10px;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
@@ -14,7 +105,7 @@
                 <h3 class="h4 mb-4">Facial Expression Analysis</h3>
                 
                 <div class="alert alert-info mb-4">
-                    <p class="mb-0">This is a placeholder for the video analysis component. In the final implementation, this will show a video to the user while recording and analyzing their facial expressions.</p>
+                    <p class="mb-0">Watch the video while we analyze your facial expressions. Please ensure your face is visible in the webcam and allow camera access when prompted.</p>
                 </div>
                 
                 <div class="row mb-4">
@@ -24,8 +115,11 @@
                                 <h4 class="h6 mb-0">Stimulus Video</h4>
                             </div>
                             <div class="card-body p-3">
-                                <div style="background-color: #000; height: 200px;" class="d-flex align-items-center justify-content-center">
-                                    <span class="text-white">Video player will appear here</span>
+                                <div id="videoContainer" class="video-container">
+                                    <video id="stimulusVideo" preload="auto">
+                                        <source src="{{ url_for('static', filename='videos/bike.mp4') }}" type="video/mp4">
+                                        Your browser does not support the video tag.
+                                    </video>
                                 </div>
                             </div>
                         </div>
@@ -36,8 +130,12 @@
                                 <h4 class="h6 mb-0">Webcam Feed</h4>
                             </div>
                             <div class="card-body p-3">
-                                <div style="background-color: #000; height: 200px;" class="d-flex align-items-center justify-content-center">
-                                    <span class="text-white">Webcam feed will appear here</span>
+                                <div id="webcamContainer" class="video-container">
+                                    <video id="webcamVideo" autoplay playsinline muted></video>
+                                    <div id="recordingIndicator" class="blink">Recording</div>
+                                </div>
+                                <div id="webcamError">
+                                    Could not access webcam. Please ensure your camera is connected and you've granted permission in your browser.
                                 </div>
                             </div>
                         </div>
@@ -54,11 +152,307 @@
                     </ul>
                 </div>
                 
+                <div class="video-controls mb-4">
+                    <button id="startAnalysisBtn" class="btn btn-primary btn-lg">Start Analysis</button>
+                    <button id="stopAnalysisBtn" class="btn btn-danger btn-lg" style="display: none;">Stop Analysis</button>
+                </div>
+                
                 <div class="d-grid gap-2 col-md-6 mx-auto">
-                    <a href="{{ url_for('main.final_result') }}" class="btn btn-info btn-lg">View Comprehensive Results</a>
+                    <a id="viewResultsBtn" href="{{ url_for('main.final_result') }}" class="btn btn-info btn-lg" style="display: none;">View Comprehensive Results</a>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <p>Analyzing your facial expressions...</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const stimulusVideo = document.getElementById('stimulusVideo');
+        const webcamVideo = document.getElementById('webcamVideo');
+        const startAnalysisBtn = document.getElementById('startAnalysisBtn');
+        const stopAnalysisBtn = document.getElementById('stopAnalysisBtn');
+        const viewResultsBtn = document.getElementById('viewResultsBtn');
+        const recordingIndicator = document.getElementById('recordingIndicator');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const webcamError = document.getElementById('webcamError');
+        
+        let mediaRecorder;
+        let recordedChunks = [];
+        let webcamStream;
+        
+        // Initialize webcam with fallback options
+        async function initWebcam() {
+            try {
+                // First try with ideal settings
+                webcamStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: "user"
+                    }, 
+                    audio: false 
+                });
+                
+                webcamVideo.srcObject = webcamStream;
+                webcamError.style.display = 'none';
+                
+                // Check if the video is playing after a short delay
+                setTimeout(() => {
+                    if (webcamVideo.videoWidth === 0 || webcamVideo.videoHeight === 0) {
+                        console.warn("Webcam initialized but not showing video");
+                        // Try with more basic settings as fallback
+                        tryFallbackWebcam();
+                    }
+                }, 1000);
+                
+                return true;
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                tryFallbackWebcam();
+                return false;
+            }
+        }
+        
+        // Fallback webcam initialization with minimal options
+        async function tryFallbackWebcam() {
+            try {
+                // Stop any previous stream
+                if (webcamStream) {
+                    webcamStream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Try with minimal constraints
+                webcamStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true
+                });
+                
+                webcamVideo.srcObject = webcamStream;
+                webcamError.style.display = 'none';
+                
+                console.log("Using fallback webcam settings");
+                return true;
+            } catch (err) {
+                console.error("Fallback webcam also failed:", err);
+                webcamError.style.display = 'block';
+                return false;
+            }
+        }
+        
+        // Start recording webcam with better error handling
+        function startRecording() {
+            if (!webcamStream || !webcamStream.active) {
+                console.error("No active webcam stream available");
+                alert("Cannot start recording: No active webcam stream");
+                return false;
+            }
+            
+            recordedChunks = [];
+            let options;
+            
+            // Try different MIME types based on browser support
+            if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+                options = { mimeType: 'video/webm;codecs=vp9' };
+            } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+                options = { mimeType: 'video/webm;codecs=vp8' };
+            } else if (MediaRecorder.isTypeSupported('video/webm')) {
+                options = { mimeType: 'video/webm' };
+            }
+            
+            try {
+                mediaRecorder = new MediaRecorder(webcamStream, options);
+                console.log("MediaRecorder created with options:", options);
+            } catch (e) {
+                console.error("MediaRecorder error:", e);
+                try {
+                    // Last resort - try with no options
+                    mediaRecorder = new MediaRecorder(webcamStream);
+                    console.log("MediaRecorder created with default options");
+                } catch (e) {
+                    console.error("MediaRecorder completely failed:", e);
+                    alert('MediaRecorder is not supported by this browser.');
+                    return false;
+                }
+            }
+            
+            mediaRecorder.ondataavailable = function(event) {
+                console.log("Data available event, size:", event.data.size);
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+            
+            mediaRecorder.onstop = function() {
+                console.log("MediaRecorder stopped, chunks:", recordedChunks.length);
+                saveRecording();
+            };
+            
+            mediaRecorder.onerror = function(event) {
+                console.error("MediaRecorder error:", event);
+            };
+            
+            // Start with smaller time slice for more frequent ondataavailable events
+            mediaRecorder.start(500);
+            console.log("MediaRecorder started:", mediaRecorder.state);
+            recordingIndicator.style.display = 'block';
+            
+            return true;
+        }
+        
+        // Stop recording with better error handling
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                try {
+                    mediaRecorder.stop();
+                    console.log("MediaRecorder stopped");
+                } catch (e) {
+                    console.error("Error stopping MediaRecorder:", e);
+                }
+                recordingIndicator.style.display = 'none';
+            } else {
+                console.warn("MediaRecorder not active, cannot stop");
+            }
+        }
+        
+        // Save the recording with improved error handling
+        function saveRecording() {
+            if (recordedChunks.length === 0) {
+                console.warn("No recorded data available");
+                loadingOverlay.style.display = 'none';
+                viewResultsBtn.style.display = 'block';
+                return;
+            }
+            
+            console.log("Creating blob from", recordedChunks.length, "chunks");
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            console.log("Blob created, size:", blob.size);
+            
+            // Create FormData to send to server
+            const formData = new FormData();
+            formData.append('webcam_video', blob, 'webcam_recording.webm');
+            
+            // Debug info before sending
+            console.log("Sending FormData with blob of size:", blob.size);
+            
+            // Send to server
+            fetch('/save_webcam_recording', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                console.log("Server response status:", response.status);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Recording saved:", data);
+                loadingOverlay.style.display = 'none';
+                viewResultsBtn.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Error saving recording:', error);
+                loadingOverlay.style.display = 'none';
+                viewResultsBtn.style.display = 'block';
+                alert('There was an error saving your recording, but you can continue to the results.');
+            });
+        }
+        
+        // Start the analysis process with better error handling
+        async function startAnalysis() {
+            console.log("Starting analysis process");
+            
+            // Initialize webcam first
+            await initWebcam();
+            
+            // Slight delay to ensure webcam is fully initialized
+            setTimeout(async () => {
+                if (!webcamStream || !webcamStream.active) {
+                    console.error("Webcam stream not active after initialization");
+                    webcamError.style.display = 'block';
+                    return;
+                }
+                
+                console.log("Webcam initialized successfully");
+                
+                // Start recording
+                if (!startRecording()) {
+                    console.error("Failed to start recording");
+                    return;
+                }
+                
+                // Play the stimulus video
+                try {
+                    stimulusVideo.play();
+                    console.log("Stimulus video playback started");
+                } catch (e) {
+                    console.error("Error playing stimulus video:", e);
+                }
+                
+                // Update UI
+                startAnalysisBtn.style.display = 'none';
+                stopAnalysisBtn.style.display = 'inline-block';
+            }, 500);
+        }
+        
+        // Event handlers
+        startAnalysisBtn.addEventListener('click', startAnalysis);
+        
+        stopAnalysisBtn.addEventListener('click', function() {
+            console.log("Stop button clicked");
+            stimulusVideo.pause();
+            stopRecording();
+            stopAnalysisBtn.style.display = 'none';
+            loadingOverlay.style.display = 'flex';
+        });
+        
+        // Stop recording when video ends
+        stimulusVideo.addEventListener('ended', function() {
+            console.log("Video ended event");
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecording();
+                stopAnalysisBtn.style.display = 'none';
+                loadingOverlay.style.display = 'flex';
+            }
+        });
+        
+        // Log when webcam video stream starts
+        webcamVideo.addEventListener('play', function() {
+            console.log("Webcam video playback started");
+            console.log("Webcam video dimensions:", webcamVideo.videoWidth, "x", webcamVideo.videoHeight);
+        });
+        
+        // Cleanup function
+        function cleanup() {
+            console.log("Cleanup function called");
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => {
+                    console.log("Stopping track:", track.kind);
+                    track.stop();
+                });
+            }
+        }
+        
+        // Clean up on page unload/navigation
+        window.addEventListener('beforeunload', cleanup);
+        
+        // Add some console logging to help with debugging
+        console.log("Video analysis page loaded");
+        stimulusVideo.addEventListener('loadedmetadata', function() {
+            console.log("Stimulus video metadata loaded, dimensions:", 
+                        stimulusVideo.videoWidth, "x", stimulusVideo.videoHeight);
+        });
+    });
+</script>
 {% endblock %} 
