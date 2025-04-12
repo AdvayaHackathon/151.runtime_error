@@ -4,35 +4,58 @@
 
 {% block extra_css %}
 <style>
-    #videoContainer {
+    body {
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+        height: 100vh;
+    }
+    #mainContainer {
         position: relative;
-        max-width: 100%;
-        margin: 0 auto;
+        width: 100%;
+        height: 100vh;
+    }
+    #videoContainer {
+        position: absolute;
+        width: 100%;
+        height: 100vh;
+        margin: 0;
+        overflow: hidden;
+        top: 0;
+        left: 0;
     }
     #stimulusVideo {
         width: 100%;
-        height: auto;
-        max-height: 350px;
-        background-color: #000;
+        height: 100vh;
         object-fit: contain;
+        background-color: #000;
+    }
+    #webcamContainer {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 240px;
+        height: 180px;
+        z-index: 10;
+        border: 3px solid rgba(255, 255, 255, 0.7);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     }
     #webcamVideo {
         width: 100%;
-        height: auto;
-        max-height: 350px;
-        background-color: #000;
+        height: 100%;
         object-fit: cover;
-    }
-    .video-container {
-        position: relative;
         background-color: #000;
-        min-height: 200px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
     }
     .video-controls {
-        margin-top: 15px;
+        position: fixed;
+        bottom: 30px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        z-index: 10;
+        padding: 10px;
     }
     #recordingIndicator {
         display: none;
@@ -89,133 +112,93 @@
         padding: 10px;
         margin-top: 10px;
         border-radius: 4px;
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        z-index: 15;
+        max-width: 300px;
     }
     #videoError {
         display: none;
-        color: #721c24;
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        padding: 10px;
-        margin-top: 10px;
-        border-radius: 4px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 20px;
+        text-align: center;
+        border-radius: 8px;
+        z-index: 20;
+    }
+    #viewResultsBtn {
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+    }
+    .btn-primary, .btn-danger, .btn-info {
+        font-size: 1.2rem;
+        padding: 12px 30px;
+        border-radius: 50px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    .analysis-instructions {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: rgba(0, 0, 0, 0.6);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        max-width: 80%;
+        text-align: center;
+        z-index: 5;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card shadow-sm">
-            <div class="card-header bg-info text-white">
-                <h2 class="h5 mb-0">Phase 3: Video Analysis</h2>
-            </div>
-            
-            <div class="card-body p-4 text-center">
-                <h3 class="h4 mb-4">Facial Expression Analysis</h3>
-                
-                <div class="alert alert-info mb-4">
-                    <p class="mb-0">Watch the video while we analyze your facial expressions. Please ensure your face is visible in the webcam and allow camera access when prompted.</p>
-                    <p class="small mt-2 mb-0">The analysis will use the 53-second "hack.mp4" video as stimulus.</p>
-                </div>
-                
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-header bg-light">
-                                <h4 class="h6 mb-0">Stimulus Video</h4>
-                            </div>
-                            <div class="card-body p-3">
-                                <div id="videoContainer" class="video-container">
-                                    <video id="stimulusVideo" preload="auto" width="100%" height="auto" style="max-height: 350px; background-color: #000;">
-                                        <!-- Direct approach that's working -->
-                                        <source src="/hack.mp4" type="video/mp4">
-                                        <!-- Fallback sources if needed -->
-                                        <source src="/static/vedio/hack.mp4" type="video/mp4">
-                                        <source src="{{ url_for('static', filename='vedio/hack.mp4') }}" type="video/mp4">
-                                        <source src="/vedio/hack.mp4" type="video/mp4">
-                                        Your browser does not support the video tag.
-                                    </video>
-                                    <div id="videoError" style="display:none; position:absolute; background-color:rgba(0,0,0,0.7); color:white; padding:10px; text-align:center; width:100%;">
-                                        Error loading video. Please refresh the page.
-                                    </div>
-                                </div>
-                                
-                                <script>
-                                    // Add error handling for the video element
-                                    document.addEventListener('DOMContentLoaded', function() {
-                                        const video = document.getElementById('stimulusVideo');
-                                        video.addEventListener('error', function(e) {
-                                            console.error("Video error event triggered");
-                                            // If sources fail, try direct fetch approach
-                                            fetch('/hack.mp4')
-                                                .then(response => {
-                                                    console.log("Fetch response status:", response.status);
-                                                    if (!response.ok) {
-                                                        throw new Error('Network response was not ok: ' + response.status);
-                                                    }
-                                                    return response.blob();
-                                                })
-                                                .then(blob => {
-                                                    console.log("Video blob received, size:", blob.size);
-                                                    const url = URL.createObjectURL(blob);
-                                                    video.src = url;
-                                                    video.load();
-                                                })
-                                                .catch(err => {
-                                                    console.error("Failed to load video:", err);
-                                                    document.getElementById('videoError').style.display = 'block';
-                                                });
-                                        });
-                                        
-                                        // Log when video loads successfully
-                                        video.addEventListener('loadeddata', function() {
-                                            console.log("Video loaded successfully!");
-                                        });
-                                    });
-                                </script>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header bg-light">
-                                <h4 class="h6 mb-0">Webcam Feed</h4>
-                            </div>
-                            <div class="card-body p-3">
-                                <div id="webcamContainer" class="video-container">
-                                    <video id="webcamVideo" autoplay playsinline muted></video>
-                                    <div id="recordingIndicator" class="blink">Recording</div>
-                                </div>
-                                <div id="webcamError">
-                                    Could not access webcam. Please ensure your camera is connected and you've granted permission in your browser.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="alert alert-secondary mb-4">
-                    <h4 class="h6">Data Being Collected:</h4>
-                    <ul class="mb-0 text-start">
-                        <li>Facial expressions (happy, sad, angry, etc.)</li>
-                        <li>Emotional reactivity</li>
-                        <li>Attention patterns</li>
-                        <li>Emotional regulation</li>
-                        <li>Blink detection (count and rate)</li>
-                    </ul>
-                </div>
-                
-                <div class="video-controls mb-4">
-                    <button id="startAnalysisBtn" class="btn btn-primary btn-lg">Start Analysis</button>
-                    <button id="stopAnalysisBtn" class="btn btn-danger btn-lg" style="display: none;">Stop Analysis</button>
-                </div>
-                
-                <div class="d-grid gap-2 col-md-6 mx-auto">
-                    <a id="viewResultsBtn" href="{{ url_for('main.final_result') }}" class="btn btn-info btn-lg" style="display: none;">View Comprehensive Results</a>
-                </div>
-            </div>
+<div id="mainContainer">
+    <!-- Video container takes full screen immediately -->
+    <div id="videoContainer">
+        <video id="stimulusVideo" preload="auto">
+            <!-- Direct approach that's working -->
+            <source src="/hack.mp4" type="video/mp4">
+            <!-- Fallback sources if needed -->
+            <source src="/static/vedio/hack.mp4" type="video/mp4">
+            <source src="{{ url_for('static', filename='vedio/hack.mp4') }}" type="video/mp4">
+            <source src="/vedio/hack.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <div id="videoError">
+            Error loading video. Please refresh the page.
+        </div>
+        
+        <div class="analysis-instructions">
+            <p>Watch the video while we analyze your facial expressions. Please ensure your face is visible in the webcam.</p>
         </div>
     </div>
+    
+    <!-- Webcam container in bottom right -->
+    <div id="webcamContainer">
+        <video id="webcamVideo" autoplay playsinline muted></video>
+        <div id="recordingIndicator" class="blink">Recording</div>
+    </div>
+    
+    <div id="webcamError">
+        Could not access webcam. Please ensure your camera is connected and you've granted permission in your browser.
+    </div>
+    
+    <!-- Controls at bottom center -->
+    <div class="video-controls">
+        <button id="startAnalysisBtn" class="btn btn-primary btn-lg">Start Analysis</button>
+        <button id="stopAnalysisBtn" class="btn btn-danger btn-lg" style="display: none;">Stop Analysis</button>
+    </div>
+    
+    <a id="viewResultsBtn" href="{{ url_for('main.final_result') }}" class="btn btn-info btn-lg" style="display: none;">View Comprehensive Results</a>
 </div>
 
 <div id="loadingOverlay">
@@ -223,6 +206,40 @@
     <p>Processing your facial expressions...</p>
     <p class="small text-info mt-2">This may take a moment as we analyze your emotional responses and blink patterns</p>
 </div>
+
+<script>
+    // Add error handling for the video element
+    document.addEventListener('DOMContentLoaded', function() {
+        const video = document.getElementById('stimulusVideo');
+        video.addEventListener('error', function(e) {
+            console.error("Video error event triggered");
+            // If sources fail, try direct fetch approach
+            fetch('/hack.mp4')
+                .then(response => {
+                    console.log("Fetch response status:", response.status);
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.status);
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    console.log("Video blob received, size:", blob.size);
+                    const url = URL.createObjectURL(blob);
+                    video.src = url;
+                    video.load();
+                })
+                .catch(err => {
+                    console.error("Failed to load video:", err);
+                    document.getElementById('videoError').style.display = 'block';
+                });
+        });
+        
+        // Log when video loads successfully
+        video.addEventListener('loadeddata', function() {
+            console.log("Video loaded successfully!");
+        });
+    });
+</script>
 {% endblock %}
 
 {% block extra_js %}
@@ -237,6 +254,7 @@
         const loadingOverlay = document.getElementById('loadingOverlay');
         const webcamError = document.getElementById('webcamError');
         const videoError = document.getElementById('videoError');
+        const instructionsElement = document.querySelector('.analysis-instructions');
         
         let mediaRecorder;
         let recordedChunks = [];
@@ -497,6 +515,11 @@
                 console.warn("Waiting for video to load...");
                 alert("Please wait for the video to load before starting the analysis.");
                 return;
+            }
+            
+            // Hide the instructions when analysis starts
+            if (instructionsElement) {
+                instructionsElement.style.display = 'none';
             }
             
             // Initialize webcam first

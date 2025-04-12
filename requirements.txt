@@ -14,4 +14,15 @@ scikit-learn>=1.0.2
 
 # Utilities
 matplotlib>=3.5.2
-pillow>=9.2.0 
+pillow>=9.2.0
+
+# Web Framework Extras
+flask-wtf>=1.0.0
+werkzeug>=2.0.0
+jinja2>=3.0.0
+
+# AI and ML Extensions
+google-generativeai>=0.1.0  # For Google Gemini API integration
+
+# Data Storage and Session Management
+flask-session>=0.4.0 

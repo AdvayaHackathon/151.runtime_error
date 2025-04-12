@@ -529,13 +529,54 @@ def final_result():
     
     # Load depression prediction model and make prediction
     try:
+        print("\n----- PREDICTION MODEL DETAILS -----")
         predictor = DepressionPredictor()
+        
+        # Get variables being passed to prediction model
+        blink_count = session.get('blink_count', 0)
+        pupil_dilation_delta = session.get('pupil_dilation_delta', 0.0)
+        ratio_gaze_on_roi = session.get('ratio_gaze_on_roi', 0.0)
+        dominant_emotion = session.get('dominant_emotion', 0)
+        phq8_score = session.get('phq8_score', 0)
+        
+        # Game data features for prediction
+        game_data = session.get('game_data', {})
+        features_dict = game_data.get('features', {})
+        avg_reaction_time = features_dict.get('avg_reaction_time', 0.0)
+        accuracy = features_dict.get('accuracy', 0.0)
+        emotional_bias = features_dict.get('emotional_bias', 0.0)
+        distraction_recovery = features_dict.get('distraction_recovery', 0.0)
+        distraction_response = features_dict.get('distraction_response', 0.0)
+        emotional_response_ratio = features_dict.get('emotional_response_ratio', 0.0)
+        
+        # Log all input variables
+        print(f"Input variables for prediction model:")
+        print(f"  blink_count = {blink_count}")
+        print(f"  pupil_dilation_delta = {pupil_dilation_delta}")
+        print(f"  ratio_gaze_on_roi = {ratio_gaze_on_roi}")
+        print(f"  dominant_emotion = {dominant_emotion} ({dominant_emotion_label})")
+        print(f"  phq8_score = {phq8_score}")
+        print(f"  avg_reaction_time = {avg_reaction_time}")
+        print(f"  accuracy = {accuracy}")
+        print(f"  emotional_bias = {emotional_bias}")
+        print(f"  distraction_recovery = {distraction_recovery}")
+        print(f"  distraction_response = {distraction_response}")
+        print(f"  emotional_response_ratio = {emotional_response_ratio}")
+        
+        # Extract features and make prediction
         features = predictor.extract_features_from_session(session)
+        print(f"Feature array passed to model: {features}")
+        print(f"Using blink_count={blink_count} in depression prediction model (replaced blink_rate)")
+        
+        # Make prediction
+        print("Making prediction with model...")
         is_depressed, depression_confidence = predictor.predict(features)
+        print(f"Prediction result: is_depressed={is_depressed}, confidence={depression_confidence:.4f}")
         
         # Store prediction results in session
         session['is_depressed'] = is_depressed
         session['depression_confidence'] = depression_confidence
+        print("----- END PREDICTION MODEL DETAILS -----\n")
     except Exception as e:
         print(f"Error in prediction model: {str(e)}")
         # Use defaults if prediction fails
@@ -572,140 +613,12 @@ def final_result():
 @main.route('/ai_report')
 def ai_report():
     print("\n===== APPLICATION FLOW: AI Report Page =====")
-    """Generate and display an AI-based mental health report using Google's Gemini API"""
-    # Check if we have all necessary data (same checks as final_result)
-    if 'phq8_score' not in session:
-        print("Redirecting - PHQ-8 not completed")
-        flash('Please complete the PHQ-8 questionnaire first')
-        return redirect(url_for('main.phq8_questionnaire'))
-        
-    if 'game_data' not in session:
-        print("Redirecting - Game not completed")
-        flash('Please complete the game phase first')
-        return redirect(url_for('main.game'))
-        
-    if 'dominant_emotion' not in session:
-        print("Redirecting - Video analysis not completed")
-        flash('Please complete the video analysis phase first')
-        return redirect(url_for('main.video_analysis'))
+    """Display the markdown report received from webhook"""
+    # No need to check for data completeness since the webhook handling is done client-side
+    # Just provide a basic template for the JavaScript to fill in
     
-    # Check if we already have a generated report
-    if 'ai_report_content' in session:
-        # Use the cached report
-        report_content = session.get('ai_report_content')
-    else:
-        # Generate a new report
-        try:
-            report_content = generate_ai_report()
-            # Cache the report in the session
-            session['ai_report_content'] = report_content
-        except Exception as e:
-            # Handle API errors gracefully
-            report_content = f"Error generating AI report: {str(e)}"
-            flash("There was an issue generating your AI report. Please try again later.")
-    
-    # Get assessment data from session for displaying alongside the report
-    phq8_score = session.get('phq8_score')
-    is_depressed = session.get('is_depressed', False)
-    depression_confidence = session.get('depression_confidence', 0.0)
-    dominant_emotion_label = session.get('dominant_emotion_label', 'neutral')
-    
-    return render_template(
-        'ai_report.html',
-        report_content=report_content,
-        phq8_score=phq8_score,
-        is_depressed=is_depressed,
-        depression_confidence=depression_confidence,
-        dominant_emotion=dominant_emotion_label
-    )
-
-def generate_ai_report():
-    """Generate an AI-based mental health report using Google's Gemini API"""
-    try:
-        from google import genai
-        
-        # Initialize the API client with API key
-        client = genai.Client(api_key="AIzaSyBZPom-4M6_G_5Pw6VgNYFLK5IO7qsfS60")
-        
-        # Gather all relevant assessment data
-        phq8_score = session.get('phq8_score', 0)
-        game_data = session.get('game_data', {})
-        dominant_emotion_label = session.get('dominant_emotion_label', 'neutral')
-        emotion_counts = session.get('emotion_counts', {})
-        blink_rate = session.get('blink_rate', 0.0)
-        ratio_gaze_on_roi = session.get('ratio_gaze_on_roi', 0.0)
-        pupil_dilation_delta = session.get('pupil_dilation_delta', 0.0)
-        is_depressed = session.get('is_depressed', False)
-        depression_confidence = session.get('depression_confidence', 0.0)
-        
-        # Format game data features
-        game_features = {}
-        if 'features' in game_data:
-            game_features = game_data['features']
-        
-        # Emotional indicators from game
-        emotional_indicators = []
-        if 'emotional_indicators' in game_data:
-            emotional_indicators = game_data['emotional_indicators']
-        
-        # Create prompt for Gemini
-        prompt = f"""
-        You are a great mental health specialist. Based on the following assessment data, provide a comprehensive mental health report for this user. 
-        Focus on insights, patterns, and recommendations. Be supportive, empathetic, and professional.
-        
-        Assessment Data:
-        1. PHQ-8 Depression Screening Score: {phq8_score}/24
-           - {'Minimal' if phq8_score <= 4 else 'Mild' if phq8_score <= 9 else 'Moderate' if phq8_score <= 14 else 'Moderately Severe' if phq8_score <= 19 else 'Severe'} depression symptoms
-        
-        2. Game-Based Cognitive Assessment:
-           - Accuracy: {game_features.get('accuracy', 0)}%
-           - Average Reaction Time: {game_features.get('avg_reaction_time', 0)} ms
-           - Distraction Recovery: {game_features.get('distraction_recovery', 0)}
-           - Emotional Bias: {game_features.get('emotional_bias', 0)}
-           - Performance Degradation: {game_features.get('performance_degradation', 0)}
-        
-        3. Video Analysis:
-           - Dominant Emotion: {dominant_emotion_label}
-           - Emotion Distribution: {emotion_counts}
-           - Blink Rate: {blink_rate} blinks/min
-           - Gaze Focus Ratio: {ratio_gaze_on_roi}
-           - Pupil Dilation Delta: {pupil_dilation_delta}
-        
-        4. AI Model Prediction:
-           - Depression Risk: {"High" if is_depressed else "Low"}
-           - Confidence: {depression_confidence * 100}%
-        
-        5. Emotional Indicators:
-           {', '.join([f"{indicator.get('emotion', 'Unknown')} ({indicator.get('confidence', 0)*100}%)" for indicator in emotional_indicators]) if emotional_indicators else "No significant emotional indicators detected"}
-        
-        FORMAT YOUR RESPONSE WITH THESE SECTIONS:
-        1. Assessment Summary
-        2. Key Observations
-        3. Personalized Insights
-        4. Recommendations
-        5. Next Steps
-        
-        IMPORTANT: This is NOT a diagnostic report. Include a clear disclaimer that this assessment does not replace professional medical evaluation.
-        """
-        
-        # Make the API call
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        
-        # Return the response text
-        return response.text
-        
-    except Exception as e:
-        print(f"Error generating AI report: {str(e)}")
-        # Return a fallback message if the API call fails
-        return """
-        We apologize, but we're unable to generate your AI-based report at this time. 
-        Please try again later or refer to your assessment results page for detailed information.
-        
-        Error details: {str(e)}
-        """
+    print("Rendering AI report template for webhook content")
+    return render_template('ai_report.html')
 
 @main.route('/save_game_data', methods=['POST'])
 def save_game_data():
