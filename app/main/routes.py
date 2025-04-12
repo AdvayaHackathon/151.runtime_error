@@ -51,10 +51,13 @@ def index():
     if 'current_question' in session:
         session.pop('current_question')
     
+    print("\n===== APPLICATION FLOW: User accessing index page =====")
+    print("Session reset for new assessment")
     return render_template('index.html')
 
 @main.route('/phq8', methods=['GET', 'POST'])
 def phq8_questionnaire():
+    print("\n===== APPLICATION FLOW: PHQ-8 Questionnaire =====")
     # Initialize session variables if not present
     if 'phq8_responses' not in session:
         session['phq8_responses'] = []
@@ -67,12 +70,14 @@ def phq8_questionnaire():
         # Calculate score
         total_score = sum(session['phq8_responses'])
         session['phq8_score'] = total_score
+        print(f"PHQ-8 completed. Total score: {total_score}")
         return redirect(url_for('main.phq8_result'))
     
     # Handle POST request (answer submission)
     if request.method == 'POST':
         if 'skip' in request.form:
             # Skip directly to the result page for testing
+            print("User skipped PHQ-8 questionnaire")
             return redirect(url_for('main.phq8_result'))
         
         answer = request.form.get('answer')
@@ -82,6 +87,8 @@ def phq8_questionnaire():
             responses.append(int(answer))
             session['phq8_responses'] = responses
             session['current_question'] += 1
+            current_q = session['current_question']
+            print(f"PHQ-8 question {current_q} answered: {answer} - {choices[answer]}")
             
             # Redirect to handle the next question or show results
             return redirect(url_for('main.phq8_questionnaire'))
@@ -101,13 +108,16 @@ def phq8_questionnaire():
 
 @main.route('/phq8_result')
 def phq8_result():
+    print("\n===== APPLICATION FLOW: PHQ-8 Results Page =====")
     # If user tries to access results without completing the questionnaire
     if 'phq8_score' not in session:
         # For testing purposes, generate a random score
         if 'skip' in request.args:
             import random
             session['phq8_score'] = random.randint(0, 24)
+            print(f"Generated random PHQ-8 score for testing: {session['phq8_score']}")
         else:
+            print("Redirecting - PHQ-8 not completed")
             flash('Please complete the questionnaire first')
             return redirect(url_for('main.phq8_questionnaire'))
     
@@ -139,20 +149,25 @@ def phq8_result():
 
 @main.route('/game')
 def game():
+    print("\n===== APPLICATION FLOW: Game Page =====")
     # If PHQ-8 is not completed and not skipped, redirect to PHQ-8
     if 'phq8_score' not in session and 'skip' not in request.args:
+        print("Redirecting - PHQ-8 not completed")
         flash('Please complete the PHQ-8 questionnaire first')
         return redirect(url_for('main.phq8_questionnaire'))
     
+    print("Rendering game page")
     return render_template('game.html')
 
 @main.route('/video_analysis')
 def video_analysis():
-    # Placeholder for the video analysis phase
+    print("\n===== APPLICATION FLOW: Video Analysis Page =====")
+    print("Rendering video analysis page")
     return render_template('video_analysis.html')
 
 @main.route('/save_webcam_recording', methods=['POST'])
 def save_webcam_recording():
+    print("\n===== APPLICATION FLOW: Processing Webcam Recording =====")
     try:
         # Log request information
         print(f"Received webcam recording request, Content-Length: {request.content_length}")
@@ -251,6 +266,12 @@ def save_webcam_recording():
                         if fps <= 0:
                             fps = 30  # Default to 30fps if detection fails
                         
+                        # Get frame count for duration calculation
+                        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                        video_duration = frame_count / fps if frame_count > 0 and fps > 0 else 53  # Default to 53 seconds for the hack.mp4 video
+                        
+                        print(f"Video properties - FPS: {fps}, Frames: {frame_count}, Duration: {video_duration:.2f} seconds")
+                        
                         # Update FPS in blink detector
                         blink_detector.fps = fps
                         
@@ -270,6 +291,19 @@ def save_webcam_recording():
                         
                         # Release the video capture
                         cap.release()
+                        
+                        # If using the Stimulus-in-Page approach (web-generated webcam recording while watching hack.mp4)
+                        # The actual video duration would be closer to 53 seconds
+                        # Adjust blink rate if necessary
+                        if last_blink_data and 'blink_rate' in last_blink_data:
+                            # For videos with similar duration to hack.mp4 (53 seconds),
+                            # we can check if the duration seems wrong and fix it
+                            if video_duration < 40 or video_duration > 70:
+                                # If the estimated duration is very different from expected 53 seconds,
+                                # use the known duration and recalculate the blink rate
+                                adjusted_blink_rate = (blink_detector.blink_counter / 53) * 60
+                                print(f"Adjusting blink rate from {last_blink_data['blink_rate']:.2f} to {adjusted_blink_rate:.2f} based on known 53-second duration")
+                                last_blink_data['blink_rate'] = adjusted_blink_rate
                         
                         # Store blink data in session
                         session['blink_count'] = blink_detector.blink_counter
@@ -435,18 +469,41 @@ def save_webcam_recording():
 
 @main.route('/final_result')
 def final_result():
-    # Check if we have all necessary data
+    print("\n===== APPLICATION FLOW: Final Results Page =====")
+    # Debug information
+    print("Accessing final_result route")
+    print(f"Session variables: {str(session.keys())}")
+    
+    # Check if we have all necessary data, but use defaults if not available
+    # instead of redirecting, so the user can see results even if some data is missing
     if 'phq8_score' not in session:
-        flash('Please complete the PHQ-8 questionnaire first')
-        return redirect(url_for('main.phq8_questionnaire'))
-        
+        print("Missing phq8_score in session - using default")
+        # Use a default value instead of redirecting
+        session['phq8_score'] = 5  # Default mild score
+    
     if 'game_data' not in session:
-        flash('Please complete the game phase first')
-        return redirect(url_for('main.game'))
-        
+        print("Missing game_data in session - using default")
+        # Use default game data instead of redirecting
+        session['game_data'] = {
+            'score': 0,
+            'features': {
+                'avg_reaction_time': 1000,
+                'accuracy': 75.0
+            },
+            'emotional_indicators': []
+        }
+    
     if 'dominant_emotion' not in session:
-        flash('Please complete the video analysis phase first')
-        return redirect(url_for('main.video_analysis'))
+        print("Missing dominant_emotion in session - using default")
+        # Use default values instead of redirecting
+        session['dominant_emotion'] = 0  # Neutral
+        session['dominant_emotion_label'] = 'neutral'
+        session['emotion_counts'] = {
+            'angry': 0, 'disgust': 0, 'fear': 0, 
+            'happy': 0, 'sad': 0, 'surprise': 0, 'neutral': 1
+        }
+        session['blink_count'] = 0
+        session['blink_rate'] = 0.0
     
     # Get data from session
     phq8_score = session.get('phq8_score')
@@ -457,27 +514,37 @@ def final_result():
     blink_count = session.get('blink_count', 0)
     blink_rate = session.get('blink_rate', 0.0)
     
-    # Get gaze tracking data
+    # Get gaze tracking data with defaults
     looking_left_count = session.get('looking_left_count', 0)
     looking_right_count = session.get('looking_right_count', 0)
     looking_center_count = session.get('looking_center_count', 0)
     total_gaze_frames = session.get('total_gaze_frames', 0)
     ratio_gaze_on_roi = session.get('ratio_gaze_on_roi', 0.0)
     
-    # Get pupil dilation data
+    # Get pupil dilation data with defaults
     pupil_dilation_delta = session.get('pupil_dilation_delta', 0.0)
     avg_pupil_size = session.get('avg_pupil_size', 0.0)
     min_pupil_size = session.get('min_pupil_size', 0.0)
     max_pupil_size = session.get('max_pupil_size', 0.0)
     
     # Load depression prediction model and make prediction
-    predictor = DepressionPredictor()
-    features = predictor.extract_features_from_session(session)
-    is_depressed, depression_confidence = predictor.predict(features)
+    try:
+        predictor = DepressionPredictor()
+        features = predictor.extract_features_from_session(session)
+        is_depressed, depression_confidence = predictor.predict(features)
+        
+        # Store prediction results in session
+        session['is_depressed'] = is_depressed
+        session['depression_confidence'] = depression_confidence
+    except Exception as e:
+        print(f"Error in prediction model: {str(e)}")
+        # Use defaults if prediction fails
+        is_depressed = False
+        depression_confidence = 0.3
+        session['is_depressed'] = is_depressed
+        session['depression_confidence'] = depression_confidence
     
-    # Store prediction results in session
-    session['is_depressed'] = is_depressed
-    session['depression_confidence'] = depression_confidence
+    print(f"Rendering final_result template with data: PHQ-8={phq8_score}, Game={game_data.get('score', 0)}, Emotion={dominant_emotion_label}")
     
     # For now, just pass these to the template
     return render_template(
@@ -502,14 +569,155 @@ def final_result():
         depression_confidence=depression_confidence
     )
 
+@main.route('/ai_report')
+def ai_report():
+    print("\n===== APPLICATION FLOW: AI Report Page =====")
+    """Generate and display an AI-based mental health report using Google's Gemini API"""
+    # Check if we have all necessary data (same checks as final_result)
+    if 'phq8_score' not in session:
+        print("Redirecting - PHQ-8 not completed")
+        flash('Please complete the PHQ-8 questionnaire first')
+        return redirect(url_for('main.phq8_questionnaire'))
+        
+    if 'game_data' not in session:
+        print("Redirecting - Game not completed")
+        flash('Please complete the game phase first')
+        return redirect(url_for('main.game'))
+        
+    if 'dominant_emotion' not in session:
+        print("Redirecting - Video analysis not completed")
+        flash('Please complete the video analysis phase first')
+        return redirect(url_for('main.video_analysis'))
+    
+    # Check if we already have a generated report
+    if 'ai_report_content' in session:
+        # Use the cached report
+        report_content = session.get('ai_report_content')
+    else:
+        # Generate a new report
+        try:
+            report_content = generate_ai_report()
+            # Cache the report in the session
+            session['ai_report_content'] = report_content
+        except Exception as e:
+            # Handle API errors gracefully
+            report_content = f"Error generating AI report: {str(e)}"
+            flash("There was an issue generating your AI report. Please try again later.")
+    
+    # Get assessment data from session for displaying alongside the report
+    phq8_score = session.get('phq8_score')
+    is_depressed = session.get('is_depressed', False)
+    depression_confidence = session.get('depression_confidence', 0.0)
+    dominant_emotion_label = session.get('dominant_emotion_label', 'neutral')
+    
+    return render_template(
+        'ai_report.html',
+        report_content=report_content,
+        phq8_score=phq8_score,
+        is_depressed=is_depressed,
+        depression_confidence=depression_confidence,
+        dominant_emotion=dominant_emotion_label
+    )
+
+def generate_ai_report():
+    """Generate an AI-based mental health report using Google's Gemini API"""
+    try:
+        from google import genai
+        
+        # Initialize the API client with API key
+        client = genai.Client(api_key="AIzaSyBZPom-4M6_G_5Pw6VgNYFLK5IO7qsfS60")
+        
+        # Gather all relevant assessment data
+        phq8_score = session.get('phq8_score', 0)
+        game_data = session.get('game_data', {})
+        dominant_emotion_label = session.get('dominant_emotion_label', 'neutral')
+        emotion_counts = session.get('emotion_counts', {})
+        blink_rate = session.get('blink_rate', 0.0)
+        ratio_gaze_on_roi = session.get('ratio_gaze_on_roi', 0.0)
+        pupil_dilation_delta = session.get('pupil_dilation_delta', 0.0)
+        is_depressed = session.get('is_depressed', False)
+        depression_confidence = session.get('depression_confidence', 0.0)
+        
+        # Format game data features
+        game_features = {}
+        if 'features' in game_data:
+            game_features = game_data['features']
+        
+        # Emotional indicators from game
+        emotional_indicators = []
+        if 'emotional_indicators' in game_data:
+            emotional_indicators = game_data['emotional_indicators']
+        
+        # Create prompt for Gemini
+        prompt = f"""
+        You are a great mental health specialist. Based on the following assessment data, provide a comprehensive mental health report for this user. 
+        Focus on insights, patterns, and recommendations. Be supportive, empathetic, and professional.
+        
+        Assessment Data:
+        1. PHQ-8 Depression Screening Score: {phq8_score}/24
+           - {'Minimal' if phq8_score <= 4 else 'Mild' if phq8_score <= 9 else 'Moderate' if phq8_score <= 14 else 'Moderately Severe' if phq8_score <= 19 else 'Severe'} depression symptoms
+        
+        2. Game-Based Cognitive Assessment:
+           - Accuracy: {game_features.get('accuracy', 0)}%
+           - Average Reaction Time: {game_features.get('avg_reaction_time', 0)} ms
+           - Distraction Recovery: {game_features.get('distraction_recovery', 0)}
+           - Emotional Bias: {game_features.get('emotional_bias', 0)}
+           - Performance Degradation: {game_features.get('performance_degradation', 0)}
+        
+        3. Video Analysis:
+           - Dominant Emotion: {dominant_emotion_label}
+           - Emotion Distribution: {emotion_counts}
+           - Blink Rate: {blink_rate} blinks/min
+           - Gaze Focus Ratio: {ratio_gaze_on_roi}
+           - Pupil Dilation Delta: {pupil_dilation_delta}
+        
+        4. AI Model Prediction:
+           - Depression Risk: {"High" if is_depressed else "Low"}
+           - Confidence: {depression_confidence * 100}%
+        
+        5. Emotional Indicators:
+           {', '.join([f"{indicator.get('emotion', 'Unknown')} ({indicator.get('confidence', 0)*100}%)" for indicator in emotional_indicators]) if emotional_indicators else "No significant emotional indicators detected"}
+        
+        FORMAT YOUR RESPONSE WITH THESE SECTIONS:
+        1. Assessment Summary
+        2. Key Observations
+        3. Personalized Insights
+        4. Recommendations
+        5. Next Steps
+        
+        IMPORTANT: This is NOT a diagnostic report. Include a clear disclaimer that this assessment does not replace professional medical evaluation.
+        """
+        
+        # Make the API call
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
+        
+        # Return the response text
+        return response.text
+        
+    except Exception as e:
+        print(f"Error generating AI report: {str(e)}")
+        # Return a fallback message if the API call fails
+        return """
+        We apologize, but we're unable to generate your AI-based report at this time. 
+        Please try again later or refer to your assessment results page for detailed information.
+        
+        Error details: {str(e)}
+        """
+
 @main.route('/save_game_data', methods=['POST'])
 def save_game_data():
+    print("\n===== APPLICATION FLOW: Processing Game Data =====")
     # Get data from request
     data = request.json
     
     # Add timestamp and PHQ-8 score
     data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     data['phq8_score'] = session.get('phq8_score', None)
+    
+    print(f"Game data received - Score: {data.get('score', 0)}")
     
     # Extract features for emotion prediction
     features = extract_features(data)
@@ -533,6 +741,7 @@ def save_game_data():
         'emotional_indicators': emotional_indicators
     }
     
+    print("Game data saved successfully to session")
     return jsonify({
         "status": "success",
         "features": features,
@@ -766,4 +975,41 @@ def calculate_attention_score(features):
     
     # Weighted calculation
     return (rt_variability_factor * 0.3 + accuracy_factor * 0.3 + 
-            degradation_factor * 0.2 + distraction_factor * 0.2) 
+            degradation_factor * 0.2 + distraction_factor * 0.2)
+
+@main.route('/debug_session')
+def debug_session():
+    """Debug route to check session state - only for development"""
+    print("\n===== APPLICATION FLOW: Debug Session Route =====")
+    # Create a summary of the session for debugging
+    session_summary = {
+        'session_keys': list(session.keys()),
+        'phq8_completed': 'phq8_score' in session,
+        'game_completed': 'game_data' in session,
+        'video_completed': 'dominant_emotion' in session,
+        'current_state': {}
+    }
+    
+    # Add details about each major component
+    if 'phq8_score' in session:
+        session_summary['current_state']['phq8_score'] = session['phq8_score']
+    
+    if 'game_data' in session:
+        game_data = session['game_data']
+        if isinstance(game_data, dict):
+            session_summary['current_state']['game_score'] = game_data.get('score', 'unknown')
+    
+    if 'dominant_emotion' in session:
+        session_summary['current_state']['dominant_emotion_code'] = session['dominant_emotion']
+        session_summary['current_state']['dominant_emotion_label'] = session.get('dominant_emotion_label', 'unknown')
+    
+    print(f"Debug session summary: {session_summary}")
+    
+    # Return as both JSON (for API calls) and render HTML page
+    if request.headers.get('Content-Type') == 'application/json':
+        return jsonify(session_summary)
+    else:
+        return render_template('debug_session.html', 
+                               session_summary=session_summary,
+                               session_keys=list(session.keys()),
+                               session_data=session) 

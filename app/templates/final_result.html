@@ -205,6 +205,7 @@
                 </div>
                 
                 <div class="d-grid gap-2 col-md-6 mx-auto">
+                    <a href="{{ url_for('main.ai_report') }}" class="btn btn-success mb-2">View AI-Generated Report</a>
                     <a href="{{ url_for('main.index') }}" class="btn btn-primary">Start New Assessment</a>
                 </div>
             </div>
@@ -214,5 +215,13 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- No JavaScript needed - using simple conditional styling -->
+<!-- Add console logging to track when the page loads -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("FLOW: Final results page loaded successfully");
+        console.log("FLOW: PHQ-8 score: {{ phq8_score }}");
+        console.log("FLOW: Game score: {{ game_data.score|default(0) }}");
+        console.log("FLOW: Dominant emotion: {{ dominant_emotion_label }}");
+    });
+</script>
 {% endblock %} 
